@@ -1,0 +1,28 @@
+{
+  "name": "margin-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "build:app": "npm run build && bash scripts/build-app.sh"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.10.0",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.0",
+    "@codemirror/search": "^6.5.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.43.0",
+    "@lezer/highlight": "^1.2.0",
+    "@lezer/markdown": "^1.6.0",
+    "dompurify": "^3.3.0",
+    "highlight.js": "^11.11.0",
+    "katex": "^0.16.0",
+    "markdown-it": "^14.1.0",
+    "mermaid": "^11.12.0"
+  },
+  "devDependencies": { "esbuild": "^0.25.0" }
+}

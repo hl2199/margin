@@ -1,0 +1,114 @@
+:root { color-scheme: light dark; --page:#fff; --ink:#000; --border:#d0d0d0; --muted:#666; --quote:#333; --code:#ecf4ff; --table:#f9f9f9; --cell:#d9d9d9; }
+@media (prefers-color-scheme:dark) { :root { --page:#151515; --ink:#ddd; --border:#444; --muted:#999; --quote:#ccc; --code:#242424; --table:#1b1b1b; --cell:#444; } }
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:var(--page); color:var(--ink); }
+body { font-family:-apple-system, sans-serif; font-size:14px; line-height:1.6; }
+#editor { height:100%; }
+.cm-editor { height:100%; background:var(--page); }
+.cm-editor.cm-focused { outline:none; }
+.cm-scroller { overflow:auto; font-family:inherit !important; line-height:1.6 !important; }
+.cm-editor .cm-content { box-sizing:content-box; flex:0 1 800px; width:calc(100% - 40px); max-width:800px; margin:0 auto 10px; padding:12px 20px 40vh !important; caret-color:var(--ink); }
+.cm-line { padding:0 !important; min-height:1.6em; }
+::selection { background:#ffd700; color:black; }
+.prose p, .prose blockquote, .prose ul, .prose ol, .prose pre, .prose details { margin-top:0; margin-bottom:16px; }
+.prose h1,.prose h2,.prose h3,.prose h4,.prose h5,.prose h6 { font-weight:600; line-height:1.25; margin-top:18px; margin-bottom:16px; scroll-margin-top:12px; }
+.prose h1 { font-size:2em; }
+.prose h2 { font-size:1.5em; }
+.prose h1, .prose h2 { border-bottom:1px solid var(--border); padding-bottom:.3em; }
+.prose h3 { font-size:1.25em; }
+.prose h4 { font-size:1.15em; }
+.prose h5,.prose h6 { font-size:1.05em; }
+.prose h6 { color:var(--muted); }
+.prose ul,.prose ol { padding-left:2em; }
+.prose li + li { margin-top:.25em; }
+.prose li > p { margin-top:0; margin-bottom:.5em; }
+.prose li > p:last-child { margin-bottom:0; }
+.prose ul ul,.prose ul ol,.prose ol ul,.prose ol ol { margin-top:.25em; margin-bottom:.25em; }
+.prose blockquote { border-left:.25em solid var(--border); color:var(--quote); margin:0 0 16px; padding:0 1em; }
+.prose blockquote > :first-child { margin-top:0; }
+.prose blockquote > :last-child { margin-bottom:0; }
+.prose a { color:#007aff; text-decoration:underline; cursor:text; }
+/* Command-click follows links; show that while Command is held. */
+body.command-down .prose a { cursor:pointer; }
+.prose table { border-collapse:collapse; margin:1em 0; width:100%; }
+.prose:has(table) { overflow-x:auto; }
+.prose th,.prose td { border:1px solid var(--cell); padding:8px 12px; text-align:left; }
+.prose th { background:var(--table); font-weight:600; }
+.prose img { max-width:100%; height:auto; }
+.prose code, .md-code { background:var(--code); border:1px solid rgb(0 0 0 / .1); border-radius:3px; padding:1px 3px; font-family:ui-monospace,monospace; font-size:.9286em; }
+.prose pre code { display:block; border-radius:0; padding:10px 44px 10px 10px; overflow-x:auto; white-space:pre; }
+.prose hr { border:0; border-top:1px solid var(--border); margin:16px 0; }
+.prose .frontmatter { margin:16px 0 20px; }
+.prose .frontmatter code { border:1px solid var(--border); border-radius:4px; }
+.math-display { margin:1em 0; text-align:center; overflow-x:auto; overflow-y:hidden; }
+.math-display .katex-display { margin:0; }
+.diagram { margin:0 0 16px; padding:8px 0; text-align:center; overflow-x:auto; }
+.diagram svg { max-width:100%; height:auto; }
+.render-error { color:#b42318; font:13px ui-monospace,monospace; white-space:pre-wrap; }
+.md-task { appearance:none; width:1.08em; height:1.08em; border:1px solid var(--muted); border-radius:3px; margin:0 .17em 0 -1.5em; vertical-align:-.08em; position:relative; background:var(--page); opacity:1; cursor:default; }
+.md-task:checked::after { content:''; position:absolute; width:.34em; height:.65em; left:.33em; top:.08em; border:solid var(--ink); border-width:0 1.5px 1.5px 0; transform:rotate(45deg); }
+.md-strong { font-weight:700; }
+.md-emphasis { font-style:italic; }
+.md-strike { text-decoration:line-through; }
+.md-link { color:#007aff; }
+.md-link-rendered { text-decoration:underline; cursor:pointer; }
+.md-marker,.md-url { color:var(--muted); }
+.cm-panels { border-bottom:1px solid var(--border) !important; background:var(--page) !important; color:var(--ink) !important; }
+.cm-search { font-family:-apple-system,sans-serif; padding:8px 12px !important; }
+#notice { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--page); color:var(--ink); border:1px solid var(--border); border-radius:6px; padding:8px 12px; max-width:90%; font-size:12px; box-shadow:0 2px 8px #0001; }
+.hljs-keyword,.hljs-doctag { color:#d73a49; }
+.hljs-title,.hljs-title.function_ { color:#6f42c1; }
+.hljs-string { color:#032f62; }
+.hljs-number,.hljs-literal { color:#005cc5; }
+.hljs-comment { color:#6a737d; }
+@media (prefers-color-scheme:dark) {
+  .hljs-keyword,.hljs-doctag { color:#ff7b72; }
+  .hljs-title,.hljs-title.function_ { color:#d2a8ff; }
+  .hljs-string { color:#a5d6ff; }
+  .hljs-number,.hljs-literal { color:#79c0ff; }
+  .hljs-comment { color:#8b949e; }
+  .prose code, .md-code { border-color:rgb(255 255 255 / .1); }
+}
+/* Live preview. CodeMirror measures line boxes, excluding margins, so all
+   line spacing is padding. */
+.md-heading { font-weight:600; line-height:1.25; padding-top:.6em !important; padding-bottom:.2em !important; }
+.cm-content > .md-heading:first-child { padding-top:0 !important; }
+.md-heading-1 { font-size:2em; }
+.md-heading-2 { font-size:1.5em; }
+.md-heading-1,.md-heading-2 { border-bottom:1px solid var(--border); padding-bottom:.3em !important; }
+.md-heading-3 { font-size:1.25em; }
+.md-heading-4 { font-size:1.15em; }
+.md-heading-5,.md-heading-6 { font-size:1.05em; }
+.md-heading-6 { color:var(--muted); }
+.md-setext-mark { color:var(--muted); }
+.md-quote { border-left:.25em solid var(--border); padding-left:1em !important; color:var(--quote); }
+.md-code-line { position:relative; font:13px/1.6 ui-monospace,monospace; background:var(--code); padding:0 10px !important; }
+.md-code-first { padding-top:6px !important; border-radius:4px 4px 0 0; }
+.md-code-last { padding-bottom:6px !important; border-radius:0 0 4px 4px; }
+.md-fence-label { position:absolute; right:10px; color:var(--muted); font-size:11px; font-family:-apple-system,sans-serif; }
+.md-bullet { display:inline-block; min-width:.9em; }
+.md-list-number { font-variant-numeric:tabular-nums; }
+.md-task { margin:0 .35em 0 0; pointer-events:auto; cursor:default; }
+.md-task-done { color:var(--muted); text-decoration:line-through; }
+.md-rule { display:inline-block; width:100%; height:0; border-top:1px solid var(--border); vertical-align:middle; }
+.md-image img { max-width:100%; height:auto; vertical-align:bottom; }
+.md-math-source { color:var(--muted); }
+/* An inline box makes WebKit repaint KaTeX's relatively positioned pieces when
+   text before the formula reflows (e.g. a neighbouring formula reveals). */
+.md-math { display:inline-block; white-space:nowrap; }
+.block-preview { cursor:text; }
+.block-preview > .math-display, .block-preview > .diagram { margin:0; padding:.4em 0; }
+.table-widget { overflow-x:auto; padding:.3em 0; }
+.table-widget table { margin:0; }
+.md-widget-selected { background:rgb(255 215 0 / .5); }
+.table-widget th, .table-widget td { cursor:text; }
+.table-widget [contenteditable="true"] { outline:2px solid rgb(0 122 255 / .45); outline-offset:-2px; background:var(--page); white-space:pre-wrap; }
+/* Optional outline and word count, toggled from the View menu. */
+#outline { position:fixed; left:0; top:0; bottom:0; width:220px; overflow-y:auto; padding:12px 8px 24px; border-right:1px solid var(--border); font-size:12px; line-height:1.4; }
+#outline[hidden] { display:none; }
+#outline:not([hidden]) + #editor { margin-left:220px; }
+#outline a { display:block; padding:3px 8px; border-radius:4px; color:var(--muted); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default; }
+#outline a:hover { color:var(--ink); }
+#outline a.current { color:var(--ink); background:var(--table); }
+#outline .empty { padding:3px 8px; color:var(--muted); }
+#word-count { position:fixed; right:14px; bottom:10px; font-size:11px; color:var(--muted); background:var(--page); padding:2px 6px; border-radius:4px; pointer-events:none; font-variant-numeric:tabular-nums; }
