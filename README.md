@@ -2,6 +2,8 @@
 
 A small native Mac Markdown editor with MDV-style document rendering and always-on, Obsidian-style editing. The document is always its own Markdown, styled in place; only the element under the cursor shows its markup. No added toolbar, mode switch, or document buttons.
 
+![Margin editing a Markdown document with a table, equations, a task list, code and a diagram](assets/screenshot.png)
+
 ## Install
 
 Download the latest `Margin-x.y.z.zip` from the [Releases](../../releases) page, unzip it and move Margin to Applications. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
