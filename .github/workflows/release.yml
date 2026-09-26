@@ -1,0 +1,58 @@
+# Builds Margin on GitHub's macOS runners. Pushing a tag like v0.2.0 publishes a
+# Release with the zipped app; running it by hand only uploads a test build.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Set version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.0-dev.$GITHUB_RUN_NUMBER"; fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" native/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" native/Info.plist
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - run: npm run build:app
+
+      - name: Package
+        run: |
+          codesign --verify --deep --strict build/Margin.app
+          lipo -archs build/Margin.app/Contents/MacOS/Margin
+          ditto -c -k --keepParent build/Margin.app "Margin-$VERSION.zip"
+
+      - name: Upload test build
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Margin-${{ env.VERSION }}
+          path: Margin-${{ env.VERSION }}.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Margin-${{ env.VERSION }}.zip
+          generate_release_notes: true
+          body: |
+            Download `Margin-${{ env.VERSION }}.zip`, unzip it and move Margin to Applications. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
+
+            Margin is not yet notarized by Apple, so the first launch is blocked. Open **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/Margin.app` once.

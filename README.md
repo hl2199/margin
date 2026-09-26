@@ -4,7 +4,15 @@ A small native Mac Markdown editor with MDV-style document rendering and always-
 
 ## Install
 
-Margin is not yet signed with an Apple Developer ID, so build it from source (Apple Silicon, macOS 13+, Xcode command-line tools, Node/npm):
+Download the latest `Margin-x.y.z.zip` from the [Releases](../../releases) page, unzip it and move Margin to Applications. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
+
+Margin is not yet notarized by Apple, so macOS blocks the first launch. Open **System Settings → Privacy & Security** and click **Open Anyway**, or run once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Margin.app
+```
+
+To build from source instead (macOS 13+, Xcode command-line tools, Node/npm):
 
 ```sh
 npm ci
@@ -34,6 +42,10 @@ Click a task checkbox to tick or untick it. Click a rendered link to open it (Co
 Drag or Shift-click to select; double-click selects a word and triple-click a line, even when placing the cursor reveals markup nearby. Enter continues a list, and Enter on an empty list item exits it. Undo and Redo apply to the focused document or text field, including the Find query.
 
 Line shortcuts act on the rows you see, so a wrapped paragraph behaves like several lines: **⌃A / ⌃E**, **⌘← / ⌘→** and **Home / End** go to the start or end of the displayed row (add Shift to select), **⌃N / ⌃P** move one row down or up, **⌃L** selects the row, **⌃K** and **⌘⌫** delete to the row's end or start, and **⇧⌘K** deletes the row. Up and Down follow the displayed rows of wrapped text and retain the cursor's horizontal position across blocks. Shift-Up and Shift-Down extend the selection along those rows. Moving onto a heading keeps your horizontal position after its `#` appears.
+
+## Releases
+
+Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml` on GitHub's macOS runners: it tests, builds a universal (Apple Silicon and Intel) app, and publishes it as a zip on the Releases page. Running the workflow by hand from the Actions tab builds a test zip without publishing a release. Builds are ad-hoc signed and not notarized.
 
 ## Build and check
 
