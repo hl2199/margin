@@ -53,6 +53,27 @@ import Foundation
         }
         try acceptOutside("%2e%2e%2foutside.svg".removingPercentEncoding!, "percent-decoded parent path resolves")
         try denyURL(URL(string: "margin-asset://document/?path=images/a.svg&path=secret.txt")!, "ambiguous duplicate path rejected")
+        try denyURL(URL(string: "margin-asset://document/?path=inside.svg&x=1")!, "unknown query items rejected")
+        var versioned = URLComponents(string: "margin-asset://document/")!
+        versioned.queryItems = [URLQueryItem(name: "path", value: "images/café picture.SVG"), URLQueryItem(name: "v", value: "3")]
+        let versionedAsset = try DocumentAsset.resolve(versioned.url!, documentURL: document)
+        precondition(versionedAsset.url == image.resolvingSymlinksInPath())
+        count += 1; print("PASS: a reload token does not change the image path")
+        // Images that appear or change after being requested are noticed.
+        let handler = DocumentAssetHandler(file: MarkdownFile())
+        let note = directory.appendingPathComponent("note.md")
+        try Data("x".utf8).write(to: note)
+        handler.file = try MarkdownFile(contentsOf: note)
+        handler.note(request("later.png"))
+        handler.note(request("images/café picture.SVG"))
+        precondition(!handler.imagesChanged())
+        count += 1; print("PASS: unchanged images report no change")
+        try Data("png".utf8).write(to: directory.appendingPathComponent("later.png"))
+        precondition(handler.imagesChanged() && !handler.imagesChanged())
+        count += 1; print("PASS: an image created after its request is noticed once")
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: image.path)
+        precondition(handler.imagesChanged())
+        count += 1; print("PASS: an image rewritten in place is noticed")
         try denyURL(URL(string: "margin-asset://other/?path=inside.svg")!, "other host rejected")
         try denyURL(URL(string: "margin-asset://document/inside.svg?path=inside.svg")!, "noncanonical request path rejected")
         try denyURL(URL(string: "margin-asset://document/?path=inside.svg#fragment")!, "scheme fragments rejected")

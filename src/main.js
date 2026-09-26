@@ -1,11 +1,11 @@
 import { EditorSelection, EditorState, Transaction } from '@codemirror/state';
-import { EditorView, keymap, highlightSpecialChars } from '@codemirror/view';
+import { EditorView, keymap, highlightSpecialChars, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, undo, redo, indentWithTab, cursorLineDown, cursorLineUp, selectLineDown, selectLineUp } from '@codemirror/commands';
 import { markdown, markdownKeymap, insertNewlineContinueMarkupCommand } from '@codemirror/lang-markdown';
 import { syntaxTree } from '@codemirror/language';
 import { markdownExtensions } from './markdown-syntax.js';
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
-import { editingField, editingEffect, refreshEffect, livePreview, specialBlocks, tableElement, wrapCellSelection } from './live-preview.js';
+import { editingField, editingEffect, refreshEffect, livePreview, specialBlocks, tableElement, wrapCellSelection, bumpImageVersion } from './live-preview.js';
 import './style.css';
 import 'katex/dist/katex.min.css';
 import welcome from './welcome.md';
@@ -105,7 +105,9 @@ function verticalLine(direction, extend = false) {
   return true;
 }
 const extensions = () => [
-  history(), highlightSpecialChars(), markdown({ extensions: markdownExtensions, addKeymap: false }),
+  // CodeMirror draws the selection itself: the browser can only highlight the
+  // part of a long document that is on screen, so Select All showed nothing.
+  history(), highlightSpecialChars(), drawSelection(), markdown({ extensions: markdownExtensions, addKeymap: false }),
   EditorView.lineWrapping, search({ top: true }), livePreview,
   EditorView.contentAttributes.of({ 'aria-label': 'Markdown editor', spellcheck: 'true', autocapitalize: 'off', autocorrect: 'off' }),
   keymap.of([
@@ -207,7 +209,8 @@ function openLink(href) {
 // Selection access for native checks.
 const selectionState = () => ({ anchor: view.state.selection.main.anchor, head: view.state.selection.main.head, length: view.state.doc.length, editing: view.state.field(editingField) });
 const setSelection = (anchor, head = anchor) => { view.focus(); view.dispatch({ selection: { anchor, head }, effects: editingEffect.of(true), scrollIntoView: true }); };
-window.margin = { loadDocument, reloadDocument, setDocumentInfo, setPanels, selectionState, setSelection, getText, openLink, assetRoot: () => info.path || '', command(command) {
+const refreshImages = () => { bumpImageVersion(); view.dispatch({ effects: refreshEffect.of(true) }); };
+window.margin = { loadDocument, reloadDocument, setDocumentInfo, setPanels, selectionState, setSelection, refreshImages, getText, openLink, assetRoot: () => info.path || '', command(command) {
   switch (command) {
     case 'undo': undo(view); break;
     case 'redo': redo(view); break;

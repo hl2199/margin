@@ -253,6 +253,8 @@ import WebKit
         check("outline lists headings with indentation", await wait { await self.js(view, "[...document.querySelectorAll('#outline a')].map(a => a.textContent + ':' + a.style.paddingLeft).join('|')") as? String == "Notes:8px|Details:20px|The End:20px" })
         check("word count appears", await wait { (await self.js(view, "document.querySelector('#word-count').hidden ? '' : document.querySelector('#word-count').textContent") as? String)?.hasSuffix(" words") == true })
         let viewMenu = NSApp.mainMenu!.item(withTitle: "View")!.submenu!
+        let editMenu = NSApp.mainMenu!.item(withTitle: "Edit")!.submenu!
+        check("Select All selects the editor's whole document or the focused cell, not WebKit's partial page", editMenu.item(withTitle: "Select All")?.action == #selector(AppDelegate.selectAllFocused(_:)))
         check("View menu offers outline and word count toggles", viewMenu.items.contains { $0.action == #selector(AppDelegate.toggleOutline(_:)) } && viewMenu.items.contains { $0.action == #selector(AppDelegate.toggleWordCount(_:)) })
         _ = await js(view, "window.margin.openLink('#the-end'); void 0")
         check("heading anchor links scroll within the document", await wait { (await self.js(view, "document.querySelector('.cm-scroller').scrollTop") as? Double ?? 0) > 100 })

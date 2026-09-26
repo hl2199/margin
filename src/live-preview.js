@@ -27,6 +27,10 @@ function touches(state, from, to) {
 }
 
 const sanitize = html => DOMPurify.sanitize(html, { ADD_ATTR: ['data-source-line'], ADD_TAGS: ['input'] });
+// Bumped when the app sees an image file appear or change on disk, so the page
+// requests fresh copies instead of reusing what WebKit loaded (or failed) first.
+let imageVersion = 0;
+export const bumpImageVersion = () => ++imageVersion;
 // Local images (relative, `../`, absolute or file: paths) load through the
 // native asset scheme. Web images stay blocked.
 function rewriteImages(element) {
@@ -37,12 +41,12 @@ function rewriteImages(element) {
     if (source && (file || !/^(?:[a-z][\w+.-]*:|\/\/)/i.test(source))) {
       try {
         const path = file ? new URL(source).pathname : source.split(/[?#]/)[0];
-        img.src = `margin-asset://document/?path=${encodeURIComponent(decodeURIComponent(path))}`;
+        img.src = `margin-asset://document/?path=${encodeURIComponent(decodeURIComponent(path))}&v=${imageVersion}`;
       } catch { img.removeAttribute('src'); }
     }
   }
 }
-const assetRoot = () => window.margin?.assetRoot() ?? '';
+const assetRoot = () => `${window.margin?.assetRoot() ?? ''}#${imageVersion}`;
 
 // Diagrams --------------------------------------------------------------------
 
@@ -341,6 +345,10 @@ function cellKey(wrap, cell, event) {
   } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
     window.margin?.command(event.shiftKey ? 'redo' : 'undo');
+  } else if (event.metaKey && event.key.toLowerCase() === 'a') {
+    // Select All inside a cell selects that cell, not the document.
+    event.preventDefault();
+    getSelection().selectAllChildren(cell);
   } else if (event.metaKey && ['b', 'i', 'k'].includes(event.key.toLowerCase())) {
     event.preventDefault();
     window.margin?.command({ b: 'bold', i: 'italic', k: 'link' }[event.key.toLowerCase()]);
@@ -435,9 +443,22 @@ class CheckboxWidget extends WidgetType {
 class HTMLWidget extends WidgetType {
   constructor(html, className, root) { super(); this.html = html; this.className = className; this.root = root; }
   eq(other) { return other.html === this.html && other.root === this.root; }
+  // A newer image version reloads in place: the old picture stays until the
+  // new one has loaded, so nothing collapses or flickers.
+  updateDOM(dom) {
+    if (dom.dataset.html !== this.html) return false;
+    const fresh = document.createElement('span');
+    fresh.innerHTML = sanitize(this.html);
+    rewriteImages(fresh);
+    const now = [...dom.querySelectorAll('img')], next = [...fresh.querySelectorAll('img')];
+    if (now.length !== next.length) return false;
+    now.forEach((img, i) => { if (next[i].src) img.src = next[i].src; });
+    return true;
+  }
   toDOM() {
     const span = document.createElement('span');
     span.className = this.className;
+    span.dataset.html = this.html;
     span.innerHTML = sanitize(this.html);
     rewriteImages(span);
     return span;
