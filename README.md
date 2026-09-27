@@ -1,6 +1,6 @@
 # Margin
 
-Simple native Mac Markdown viewer and editor. Edit with live rendering, Obsidian-style. 
+Deliberately simple native Mac Markdown viewer and editor. Edit with live rendering, Obsidian-style. 
 
 ![Margin editing a Markdown document with a table, equations, a task list, code and a diagram](assets/screenshot.png)
 
