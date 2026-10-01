@@ -122,3 +122,12 @@ body.command-down .prose a { cursor:pointer; }
 #outline a.current { color:var(--ink); background:var(--table); }
 #outline .empty { padding:3px 8px; color:var(--muted); }
 #word-count { position:fixed; right:14px; bottom:10px; font-size:11px; color:var(--muted); background:var(--page); padding:2px 6px; border-radius:4px; pointer-events:none; font-variant-numeric:tabular-nums; }
+/* PDF export: the editor itself, read-only, full height, light colours, with
+   page breaks kept out of tables, equations, images and code. */
+.print-mode, .print-mode body { height:auto; print-color-adjust:exact; -webkit-print-color-adjust:exact; background:#fff; color:#000; color-scheme:light; --page:#fff; --ink:#000; --border:#d0d0d0; --muted:#666; --quote:#333; --code:rgb(0 105 255 / .075); --table:rgb(0 0 0 / .025); --cell:#d9d9d9; }
+.print-mode #editor, .print-mode .cm-editor { height:auto; }
+.print-mode .cm-scroller { overflow:visible !important; }
+.print-mode .cm-editor .cm-content { width:auto; max-width:none; margin:0; padding:0 !important; }
+.print-mode .cm-cursorLayer, .print-mode .cm-selectionLayer, .print-mode #notice, .print-mode #word-count, .print-mode #outline { display:none !important; }
+.print-mode .md-heading { break-after:avoid; }
+.print-mode .table-widget, .print-mode .block-preview, .print-mode .md-image, .print-mode .md-code-line { break-inside:avoid; }

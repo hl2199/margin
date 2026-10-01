@@ -16,7 +16,7 @@ for arch in arm64 x86_64; do
     -module-cache-path "$project_root/build/module-cache" \
     -framework AppKit -framework WebKit \
     "$project_root/native/MarkdownFile.swift" "$project_root/native/DocumentAssets.swift" "$project_root/native/DocumentZoom.swift" \
-    "$project_root/native/SingleInstance.swift" "$project_root/native/Application.swift" "$project_root/native/main.swift" \
+    "$project_root/native/SingleInstance.swift" "$project_root/native/PDFExport.swift" "$project_root/native/DocumentImages.swift" "$project_root/native/Application.swift" "$project_root/native/main.swift" \
     -o "$project_root/build/Margin-$arch"
 done
 /usr/bin/lipo -create "$project_root/build/Margin-arm64" "$project_root/build/Margin-x86_64" -output "$app/Contents/MacOS/Margin"

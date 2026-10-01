@@ -12,7 +12,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 PLIST
 /usr/bin/xcrun swiftc -swift-version 5 -module-cache-path "$project_root/build/module-cache" -framework AppKit -framework WebKit \
   "$project_root/native/MarkdownFile.swift" "$project_root/native/DocumentAssets.swift" "$project_root/native/DocumentZoom.swift" \
-  "$project_root/native/SingleInstance.swift" "$application_source" "$project_root/native/FocusedUndoTests.swift" \
+  "$project_root/native/SingleInstance.swift" "$project_root/native/PDFExport.swift" "$project_root/native/DocumentImages.swift" "$application_source" "$project_root/native/FocusedUndoTests.swift" \
   -parse-as-library -o "$bundle/Contents/MacOS/FocusedUndoTests"
 /usr/bin/codesign --force --sign - "$bundle"
 "$bundle/Contents/MacOS/FocusedUndoTests" "$run_root/results.json" 2>&1 | tee "$run_root/output.txt"

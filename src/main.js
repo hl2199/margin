@@ -5,12 +5,16 @@ import { markdown, markdownKeymap, insertNewlineContinueMarkupCommand } from '@c
 import { syntaxTree } from '@codemirror/language';
 import { markdownExtensions } from './markdown-syntax.js';
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
-import { editingField, editingEffect, refreshEffect, livePreview, specialBlocks, tableElement, wrapCellSelection, bumpImageVersion } from './live-preview.js';
+import { editingField, editingEffect, refreshEffect, livePreview, specialBlocks, tableElement, wrapCellSelection, bumpImageVersion, diagramsDrawn } from './live-preview.js';
 import './style.css';
 import 'katex/dist/katex.min.css';
 import welcome from './welcome.md';
 
 const native = window.webkit?.messageHandlers?.margin;
+// PDF export loads this page with ?print: the same editor, read-only and
+// unfocused, so the PDF shows the document exactly as Margin renders it.
+const printMode = new URLSearchParams(location.search).has('print');
+if (printMode) document.documentElement.classList.add('print-mode');
 const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false });
 let info = { name: 'Untitled', path: null, dirty: false };
 let pristine = '';
@@ -107,6 +111,7 @@ function verticalLine(direction, extend = false) {
 const extensions = () => [
   // CodeMirror draws the selection itself: the browser can only highlight the
   // part of a long document that is on screen, so Select All showed nothing.
+  ...(printMode ? [EditorView.editable.of(false)] : []),
   history(), highlightSpecialChars(), drawSelection(), markdown({ extensions: markdownExtensions, addKeymap: false }),
   EditorView.lineWrapping, search({ top: true }), livePreview,
   EditorView.contentAttributes.of({ 'aria-label': 'Markdown editor', spellcheck: 'true', autocapitalize: 'off', autocorrect: 'off' }),
@@ -210,7 +215,17 @@ function openLink(href) {
 const selectionState = () => ({ anchor: view.state.selection.main.anchor, head: view.state.selection.main.head, length: view.state.doc.length, editing: view.state.field(editingField) });
 const setSelection = (anchor, head = anchor) => { view.focus(); view.dispatch({ selection: { anchor, head }, effects: editingEffect.of(true), scrollIntoView: true }); };
 const refreshImages = () => { bumpImageVersion(); view.dispatch({ effects: refreshEffect.of(true) }); };
-window.margin = { loadDocument, reloadDocument, setDocumentInfo, setPanels, selectionState, setSelection, refreshImages, getText, openLink, assetRoot: () => info.path || '', command(command) {
+// Images pasted or dropped by the app: insert their Markdown at the drop point,
+// or in place of the selection.
+const insertImages = ({ links, point }) => {
+  const text = links.map(link => `![](${link})`).join('\n');
+  const at = point ? view.posAtCoords({ x: point.x, y: point.y }, false) : null;
+  const range = at == null ? view.state.selection.main : { from: at, to: at };
+  view.focus();
+  view.dispatch({ changes: { from: range.from, to: range.to, insert: text }, selection: { anchor: range.from + text.length },
+    effects: editingEffect.of(true), userEvent: 'input.paste', scrollIntoView: true });
+};
+window.margin = { loadDocument, reloadDocument, setDocumentInfo, setPanels, selectionState, setSelection, refreshImages, insertImages, notice, getText, openLink, assetRoot: () => info.path || '', command(command) {
   switch (command) {
     case 'undo': undo(view); break;
     case 'redo': redo(view); break;
@@ -344,5 +359,29 @@ const trackCommand = event => document.body.classList.toggle('command-down', eve
 for (const type of ['keydown', 'keyup', 'mousemove']) window.addEventListener(type, trackCommand, true);
 window.addEventListener('blur', () => document.body.classList.remove('command-down'));
 window.addEventListener('beforeunload', event => { if (!native && info.dirty) { event.preventDefault(); event.returnValue = ''; } });
+// Print mode: lay out until every line is drawn (the app grows the page to the
+// reported height), then wait for images, diagrams and fonts before printing.
+const pause = ms => new Promise(done => setTimeout(done, ms));
+async function printLayout() {
+  let height = -1;
+  for (let i = 0; i < 20; i++) {
+    view.measure();
+    await pause(30);
+    const next = Math.ceil(view.contentDOM.getBoundingClientRect().bottom + window.scrollY);
+    if (Math.abs(next - height) < 1) break;
+    height = next;
+  }
+  return height;
+}
+async function printAssets() {
+  await diagramsDrawn();
+  await Promise.all([...document.querySelectorAll('.cm-content img')].map(img => img.complete ? null : new Promise(done => { img.onload = img.onerror = done; })));
+  await document.fonts.ready;
+  return printLayout();
+}
+if (printMode) Object.assign(window.margin, {
+  printLayout, printAssets,
+  async printDocument({ text, path }) { loadDocument({ text, name: 'print.md', path, dirty: false }); return printLayout(); }
+});
 if (native) post('ready');
 else loadDocument({ text: welcome, name: 'Welcome.md', dirty: false });

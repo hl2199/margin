@@ -25,6 +25,11 @@ export const editingField = StateField.define({
 function touches(state, from, to) {
   return state.field(editingField) && state.selection.ranges.some(range => range.from <= to && range.to >= from);
 }
+// Images reveal their source only with the caret inside them, so a pasted or
+// dropped image shows at once with the caret just after it.
+function inside(state, from, to) {
+  return state.field(editingField) && state.selection.ranges.some(range => range.empty ? range.head >= from && range.head < to : range.from < to && range.to > from);
+}
 
 const sanitize = html => DOMPurify.sanitize(html, { ADD_ATTR: ['data-source-line'], ADD_TAGS: ['input'] });
 // Bumped when the app sees an image file appear or change on disk, so the page
@@ -33,7 +38,7 @@ let imageVersion = 0;
 export const bumpImageVersion = () => ++imageVersion;
 // Local images (relative, `../`, absolute or file: paths) load through the
 // native asset scheme. Web images stay blocked.
-function rewriteImages(element) {
+export function rewriteImages(element) {
   if (!window.webkit?.messageHandlers?.margin) return;
   for (const img of element.querySelectorAll('img')) {
     const source = img.getAttribute('src') || '';
@@ -70,6 +75,8 @@ function loadMermaid() {
     return mermaid;
   });
 }
+/** Resolves once every diagram queued so far has been drawn. */
+export const diagramsDrawn = () => diagramQueue;
 // Diagrams are drawn in the current appearance; redraw them when it changes.
 export const diagramAppearance = ViewPlugin.fromClass(class {
   constructor(view) {
@@ -78,7 +85,7 @@ export const diagramAppearance = ViewPlugin.fromClass(class {
   }
   destroy() { darkScheme.removeEventListener('change', this.change); }
 });
-function drawDiagrams(element, view) {
+export function drawDiagrams(element, view) {
   for (const diagram of element.querySelectorAll('.diagram')) {
     const id = `diagram-${++diagramID}`;
     const source = diagram.textContent;
@@ -86,7 +93,7 @@ function drawDiagrams(element, view) {
       if (!diagram.isConnected) return;
       try {
         const result = await (await loadMermaid()).render(id, source);
-        if (diagram.isConnected) { diagram.innerHTML = DOMPurify.sanitize(result.svg); view.requestMeasure(); }
+        if (diagram.isConnected) { diagram.innerHTML = DOMPurify.sanitize(result.svg); view?.requestMeasure(); }
       } catch {
         diagram.textContent = 'Diagram could not render. Click to edit its source.';
         diagram.classList.add('render-error');
@@ -625,7 +632,7 @@ function inlineDecorations(view) {
       } else if (name === 'URL' && !['Link', 'Image', 'Autolink'].includes(node.node.parent?.name)) {
         decorations.push(Decoration.mark({ class: 'md-link md-link-rendered', attributes: { 'data-href': state.sliceDoc(node.from, node.to) } }).range(node.from, node.to));
       } else if (name === 'Image') {
-        if (!touches(state, node.from, node.to)) {
+        if (!inside(state, node.from, node.to)) {
           const url = node.node.getChild('URL');
           const marks = node.node.getChildren('LinkMark');
           const alt = marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : '';
@@ -663,7 +670,7 @@ function inlineDecorations(view) {
         const text = state.sliceDoc(node.from, node.to);
         for (const match of text.matchAll(/<(img|br)\b[^>]*>/gi)) {
           const start = node.from + match.index, end = start + match[0].length;
-          if (touches(state, start, end)) continue;
+          if (inside(state, start, end)) continue;
           const widget = match[1].toLowerCase() === 'br' ? new HTMLWidget('<br>', 'md-break', '') : new HTMLWidget(match[0], 'md-image', assetRoot());
           replace(start, end, Decoration.replace({ widget }));
         }

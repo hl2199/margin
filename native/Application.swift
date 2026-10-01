@@ -46,17 +46,23 @@ final class SettingsWindow: NSWindowController {
     }
 }
 
-/// Dropping Markdown files onto a document opens them; other drops reach the editor.
+/// Dropping Markdown files onto a document opens them; dropping images inserts
+/// them at the drop point. Other drops reach the editor.
 final class DocumentWebView: WKWebView {
     var openFiles: ([URL]) -> Void = { _ in }
+    /// Image files or image data, and the drop point in page (CSS) coordinates.
+    var insertImages: ([URL]?, Data?, NSPoint) -> Void = { _, _, _ in }
     private var handlingDrop = false
 
     private func documents(_ info: NSDraggingInfo) -> [URL] {
         let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         return !urls.isEmpty && urls.allSatisfy({ MarkdownFile.documentExtensions.contains($0.pathExtension.lowercased()) }) ? urls : []
     }
+    private func hasImages(_ info: NSDraggingInfo) -> Bool {
+        DocumentImages.files(on: info.draggingPasteboard) != nil || DocumentImages.data(on: info.draggingPasteboard) != nil
+    }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        handlingDrop = !documents(sender).isEmpty
+        handlingDrop = !documents(sender).isEmpty || hasImages(sender)
         return handlingDrop ? .copy : super.draggingEntered(sender)
     }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -70,7 +76,12 @@ final class DocumentWebView: WKWebView {
     }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard handlingDrop else { return super.performDragOperation(sender) }
-        openFiles(documents(sender))
+        let documents = documents(sender)
+        if !documents.isEmpty { openFiles(documents); return true }
+        let local = convert(sender.draggingLocation, from: nil)
+        let point = NSPoint(x: local.x / pageZoom, y: (isFlipped ? local.y : bounds.height - local.y) / pageZoom)
+        let pasteboard = sender.draggingPasteboard
+        insertImages(DocumentImages.files(on: pasteboard), DocumentImages.data(on: pasteboard), point)
         return true
     }
     override func concludeDragOperation(_ sender: NSDraggingInfo?) {
@@ -139,6 +150,7 @@ final class EditorWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WK
         ])
         webView.navigationDelegate = self
         webView.openFiles = { [weak app] urls in urls.forEach { app?.open($0) } }
+        webView.insertImages = { [weak self] files, data, point in self?.insertImages(files: files, data: data, at: point) }
         webView.pageZoom = zoom
         webView.setValue(false, forKey: "drawsBackground")
         if #available(macOS 13.3, *) { webView.isInspectable = true }
@@ -373,6 +385,47 @@ final class EditorWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WK
                 self.chooseDestination(completion: finish)
             } else {
                 self.write(to: self.file.url!, completion: finish)
+            }
+        }
+    }
+
+    /// Saves or links images for this document and inserts their Markdown at the
+    /// drop point, or at the selection when there is none.
+    func insertImages(files: [URL]?, data: Data?, at point: NSPoint?) {
+        guard let document = file.url else {
+            webView.evaluateJavaScript("window.margin.notice('Save this document first so its images have a folder.')", completionHandler: nil)
+            return
+        }
+        do {
+            let links = try files.map { try DocumentImages.links(for: $0, document: document) } ?? data.map { [try DocumentImages.save($0, document: document)] } ?? []
+            guard !links.isEmpty else { return }
+            let payload: [String: Any] = ["links": links, "point": point.map { ["x": $0.x, "y": $0.y] } ?? NSNull()]
+            webView.evaluateJavaScript("window.margin.insertImages(\(json(payload)))", completionHandler: nil)
+        } catch { present(error) }
+    }
+
+    /// Paste: image files or image data on the pasteboard become images.
+    func pasteImage(from pasteboard: NSPasteboard) -> Bool {
+        if let files = DocumentImages.files(on: pasteboard) { insertImages(files: files, data: nil, at: nil); return true }
+        if let data = DocumentImages.data(on: pasteboard) { insertImages(files: nil, data: data, at: nil); return true }
+        return false
+    }
+
+    /// File → Export as PDF: the current text, rendered and paginated.
+    func exportPDF() {
+        snapshot { [weak self] success in
+            guard let self, success else { return }
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = (self.file.name as NSString).deletingPathExtension + ".pdf"
+            panel.directoryURL = self.file.url?.deletingLastPathComponent()
+            panel.canCreateDirectories = true
+            panel.beginSheetModal(for: self.window) { [weak self] response in
+                guard let self, response == .OK, let url = panel.url else { return }
+                _ = PDFExporter(file: self.file, destination: url, parent: self.window) { [weak self] error in
+                    if let error { self?.present(error); return }
+                    self?.webView.evaluateJavaScript("window.margin.notice(\(json("Exported \(url.lastPathComponent)")))", completionHandler: nil)
+                }
             }
         }
     }
@@ -732,6 +785,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     @objc func undoFocused(_ sender: Any?) { history("undo", sender: sender) }
 
+    /// Pasting an image (or copied image files) into the document saves it beside
+    /// the document; everything else, and pasting into fields or table cells, is
+    /// the normal paste.
+    @objc func pasteFocused(_ sender: Any?) {
+        let native = { _ = NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender) }
+        let pasteboard = NSPasteboard.general
+        guard DocumentImages.files(on: pasteboard) != nil || DocumentImages.data(on: pasteboard) != nil,
+              let editor = editors.first(where: { $0.window === NSApp.keyWindow }),
+              let responder = editor.window.firstResponder as? NSView,
+              responder === editor.webView || responder.isDescendant(of: editor.webView) else { native(); return }
+        let script = "(() => { const active = document.activeElement; return !active?.closest?.('input, textarea, .cm-search, .table-widget [contenteditable=\"true\"]'); })()"
+        editor.webView.evaluateJavaScript(script) { inDocument, error in
+            if error == nil, inDocument as? Bool == true, editor.pasteImage(from: pasteboard) { return }
+            native()
+        }
+    }
+
     /// WebKit's Select All selects only the part of a long document that is on
     /// screen, or the whole page from inside a table cell. Select the editor's
     /// whole document or the focused cell instead; text fields keep native behaviour.
@@ -768,6 +838,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     @objc func saveDocument(_ sender: Any?) { current?.save() }
     @objc func saveDocumentAs(_ sender: Any?) { current?.save(asNew: true) }
+    @objc func exportPDF(_ sender: Any?) { current?.exportPDF() }
     @objc func editorCommand(_ sender: NSMenuItem) { if let name = sender.representedObject as? String { current?.command(name) } }
 
     private func buildMenus() {
@@ -814,13 +885,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         item(file, "Close", #selector(NSWindow.performClose(_:)), "w")
         item(file, "Save", #selector(saveDocument(_:)), "s", target: self)
         item(file, "Save As…", #selector(saveDocumentAs(_:)), "s", [.command, .shift], target: self)
+        file.addItem(.separator())
+        item(file, "Export as PDF…", #selector(exportPDF(_:)), "e", [.command, .shift], target: self)
         let edit = menu("Edit")
         item(edit, "Undo", #selector(undoFocused(_:)), "z", target: self)
         item(edit, "Redo", #selector(redoFocused(_:)), "z", [.command, .shift], target: self)
         edit.addItem(.separator())
         item(edit, "Cut", #selector(NSText.cut(_:)), "x")
         item(edit, "Copy", #selector(NSText.copy(_:)), "c")
-        item(edit, "Paste", #selector(NSText.paste(_:)), "v")
+        item(edit, "Paste", #selector(pasteFocused(_:)), "v", target: self)
         item(edit, "Select All", #selector(selectAllFocused(_:)), "a", target: self)
         edit.addItem(.separator())
         command(edit, "Find…", "find", "f")

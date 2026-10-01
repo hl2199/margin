@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import PDFKit
 
 @main struct LifecycleTests {
     static var runner: LifecycleRunner!
@@ -253,7 +254,60 @@ import WebKit
         check("outline lists headings with indentation", await wait { await self.js(view, "[...document.querySelectorAll('#outline a')].map(a => a.textContent + ':' + a.style.paddingLeft).join('|')") as? String == "Notes:8px|Details:20px|The End:20px" })
         check("word count appears", await wait { (await self.js(view, "document.querySelector('#word-count').hidden ? '' : document.querySelector('#word-count').textContent") as? String)?.hasSuffix(" words") == true })
         let viewMenu = NSApp.mainMenu!.item(withTitle: "View")!.submenu!
+        let fileItems = NSApp.mainMenu!.item(withTitle: "File")!.submenu!
+        check("File menu offers Export as PDF", fileItems.item(withTitle: "Export as PDF…")?.action == #selector(AppDelegate.exportPDF(_:)))
+        let pdfURL = root.appendingPathComponent("notes.pdf")
+        let exportError: String? = await withCheckedContinuation { continuation in
+            _ = PDFExporter(file: view.file, destination: pdfURL, parent: view.window) { continuation.resume(returning: $0?.localizedDescription) }
+        }
+        let pdf = PDFDocument(url: pdfURL)
+        let pdfText = (0..<(pdf?.pageCount ?? 0)).compactMap { pdf?.page(at: $0)?.string }.joined(separator: "\n")
+        check("Export as PDF writes the rendered document, paginated, without markup", exportError == nil && (pdf?.pageCount ?? 0) >= 2 && pdfText.contains("Notes") && pdfText.contains("The End") && !pdfText.contains("##") && !pdfText.contains("]("))
+        // Pasted and dropped images (a private pasteboard leaves the user's clipboard alone).
+        let pngRep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 5, pixelsHigh: 4, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let png = pngRep.representation(using: .png, properties: [:])!
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("margin-tests-\(UUID().uuidString)"))
+        pasteboard.clearContents(); pasteboard.setData(png, forType: .png)
+        _ = await js(view, "window.margin.setSelection(0); void 0")
+        check("pasting image data is handled as an image", view.pasteImage(from: pasteboard))
+        let assets = root.appendingPathComponent("assets")
+        let pasted = (try? FileManager.default.contentsOfDirectory(atPath: assets.path))?.first { $0.hasPrefix("Pasted image ") && $0.hasSuffix(".png") }
+        check("a pasted image is saved in an assets folder beside the document and linked", await wait {
+            guard let pasted, let text = await self.js(view, "window.margin.getText()") as? String else { return false }
+            return text.hasPrefix("![](assets/\(pasted.replacingOccurrences(of: " ", with: "%20")))")
+        })
+        check("the pasted image renders", await wait { await self.js(view, "[...document.querySelectorAll('.md-image img')].some(img => img.naturalWidth === 5)") as? Bool == true })
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent("margin-drop-\(UUID().uuidString)")
+        try! FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let figure = outside.appendingPathComponent("My figure (final).png")
+        try! png.write(to: figure)
+        view.insertImages(files: [figure], data: nil, at: nil)
+        view.insertImages(files: [figure], data: nil, at: nil)
+        check("an image from another folder is copied into assets, with a numbered name on a clash", await wait {
+            let text = await self.js(view, "window.margin.getText()") as? String ?? ""
+            return FileManager.default.fileExists(atPath: assets.appendingPathComponent("My figure (final).png").path) && FileManager.default.fileExists(atPath: assets.appendingPathComponent("My figure (final) 2.png").path)
+                && text.contains("![](assets/My%20figure%20%28final%29.png)") && text.contains("![](assets/My%20figure%20%28final%29%202.png)")
+        })
+        let inside = root.appendingPathComponent("figures")
+        try! FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+        try! png.write(to: inside.appendingPathComponent("local.png"))
+        view.insertImages(files: [inside.appendingPathComponent("local.png")], data: nil, at: nil)
+        let linkedInPlace = await wait { (await self.js(view, "window.margin.getText()") as? String ?? "").contains("![](figures/local.png)") }
+        check("an image inside the document's folder is linked where it is", linkedInPlace && !FileManager.default.fileExists(atPath: assets.appendingPathComponent("local.png").path))
+        pasteboard.clearContents(); pasteboard.setString("plain words", forType: .string); pasteboard.setData(png, forType: .png)
+        check("a pasteboard with text pastes as text, not as an image", !view.pasteImage(from: pasteboard))
+        reopened.newDocument(nil)
+        let untitled = reopened.editors.last!
+        _ = await wait { await self.js(untitled, "window.margin?.getText()") as? String == "" }
+        pasteboard.clearContents(); pasteboard.setData(png, forType: .png)
+        _ = untitled.pasteImage(from: pasteboard)
+        let noticed = await wait { await self.js(untitled, "document.querySelector('#notice').textContent") as? String == "Save this document first so its images have a folder." }
+        let untouched = await js(untitled, "window.margin.getText()") as? String == ""
+        check("an untitled document does not save images", noticed && untouched)
+        untitled.closeWithoutPrompt()
+        pasteboard.releaseGlobally()
         let editMenu = NSApp.mainMenu!.item(withTitle: "Edit")!.submenu!
+        check("Paste routes images into the document and everything else to the normal paste", editMenu.item(withTitle: "Paste")?.action == #selector(AppDelegate.pasteFocused(_:)))
         check("Select All selects the editor's whole document or the focused cell, not WebKit's partial page", editMenu.item(withTitle: "Select All")?.action == #selector(AppDelegate.selectAllFocused(_:)))
         check("View menu offers outline and word count toggles", viewMenu.items.contains { $0.action == #selector(AppDelegate.toggleOutline(_:)) } && viewMenu.items.contains { $0.action == #selector(AppDelegate.toggleWordCount(_:)) })
         _ = await js(view, "window.margin.openLink('#the-end'); void 0")
