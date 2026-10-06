@@ -31,6 +31,55 @@ function inside(state, from, to) {
   return state.field(editingField) && state.selection.ranges.some(range => range.empty ? range.head >= from && range.head < to : range.from < to && range.to > from);
 }
 
+/** The source range of the image under `pos` (Markdown or HTML `<img>`), if any. */
+function imageAt(state, pos) {
+  for (let node = syntaxTree(state).resolveInner(pos, 1); node; node = node.parent) {
+    if (node.name === 'Image') return { from: node.from, to: node.to };
+    if (node.name === 'HTMLTag' || node.name === 'HTMLBlock') {
+      for (const match of state.sliceDoc(node.from, node.to).matchAll(/<img\b[^>]*>/gi)) {
+        const from = node.from + match.index, to = from + match[0].length;
+        if (pos >= from && pos < to) return { from, to };
+      }
+      return null;
+    }
+  }
+  return null;
+}
+// An image whose source the caret has entered, or that was clicked, stays
+// revealed while the caret is at either edge of it, so a click anywhere on it
+// opens its source and the caret can sit at the end of that source. Arriving at
+// an edge from outside (as after a paste) still leaves it drawn.
+const holdImageEffect = StateEffect.define();
+const heldImage = StateField.define({
+  create: () => null,
+  update(held, transaction) {
+    const { state } = transaction;
+    for (const effect of transaction.effects) if (effect.is(holdImageEffect)) return effect.value;
+    if (held && transaction.docChanged) held = { from: transaction.changes.mapPos(held.from, 1), to: transaction.changes.mapPos(held.to, -1) };
+    if (held && !(held.from < held.to && state.selection.ranges.some(range => range.from <= held.to && range.to >= held.from))) held = null;
+    for (const range of state.selection.ranges) {
+      const image = range.empty && imageAt(state, range.head);
+      if (image && inside(state, image.from, image.to)) return image;
+    }
+    return held;
+  }
+});
+// Marks a clicked image before the click places the caret at its nearer edge.
+const clickedImage = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    const element = event.target.closest?.('.md-image');
+    if (!element || element.closest('.table-widget')) return false;
+    const image = imageAt(view.state, view.posAtDOM(element));
+    if (image) view.dispatch({ effects: holdImageEffect.of(image) });
+    return false;
+  }
+});
+function imageShown(state, from, to) {
+  if (inside(state, from, to)) return true;
+  const held = state.field(heldImage);
+  return held !== null && held.from === from && held.to === to && touches(state, from, to);
+}
+
 const sanitize = html => DOMPurify.sanitize(html, { ADD_ATTR: ['data-source-line'], ADD_TAGS: ['input'] });
 // Bumped when the app sees an image file appear or change on disk, so the page
 // requests fresh copies instead of reusing what WebKit loaded (or failed) first.
@@ -632,7 +681,7 @@ function inlineDecorations(view) {
       } else if (name === 'URL' && !['Link', 'Image', 'Autolink'].includes(node.node.parent?.name)) {
         decorations.push(Decoration.mark({ class: 'md-link md-link-rendered', attributes: { 'data-href': state.sliceDoc(node.from, node.to) } }).range(node.from, node.to));
       } else if (name === 'Image') {
-        if (!inside(state, node.from, node.to)) {
+        if (!imageShown(state, node.from, node.to)) {
           const url = node.node.getChild('URL');
           const marks = node.node.getChildren('LinkMark');
           const alt = marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : '';
@@ -670,7 +719,7 @@ function inlineDecorations(view) {
         const text = state.sliceDoc(node.from, node.to);
         for (const match of text.matchAll(/<(img|br)\b[^>]*>/gi)) {
           const start = node.from + match.index, end = start + match[0].length;
-          if (inside(state, start, end)) continue;
+          if (imageShown(state, start, end)) continue;
           const widget = match[1].toLowerCase() === 'br' ? new HTMLWidget('<br>', 'md-break', '') : new HTMLWidget(match[0], 'md-image', assetRoot());
           replace(start, end, Decoration.replace({ widget }));
         }
@@ -811,4 +860,4 @@ export function tableElement(view, from) {
   return [...view.contentDOM.querySelectorAll('.table-widget')].find(element => element.tableWidget?.from === from) ?? null;
 }
 
-export const livePreview = [editingField, blockField, inlinePreview, diagramAppearance, stableMouseSelection, newLinesAroundTables, typingAtTables];
+export const livePreview = [editingField, heldImage, clickedImage, blockField, inlinePreview, diagramAppearance, stableMouseSelection, newLinesAroundTables, typingAtTables];

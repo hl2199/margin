@@ -42,7 +42,7 @@ ctx.restoreGState()
 // Symbol: a red margin rule and three lines of text, centered on the tile.
 let scale: CGFloat = 1.25
 ctx.translateBy(x: 512, y: 512); ctx.scaleBy(x: scale, y: scale); ctx.translateBy(x: -512, y: -512)
-let stroke: CGFloat = 44
+let stroke: CGFloat = 54
 ctx.setLineCap(.round)
 ctx.setLineWidth(stroke)
 ctx.setStrokeColor(rgb(0xe0463c))
