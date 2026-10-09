@@ -100,6 +100,40 @@
     await setup(linked);let opened=null;const openLink=window.margin.openLink;window.margin.openLink=href=>{opened=href;};
     start=point('beta');mouse(start);mouse(start,'mouseup');await pause();window.margin.openLink=openLink;
     check('Clicking a rendered link opens it without editing',opened==='https://example.com'&&window.margin.getText()===linked,{source:linked,opened});
+    // Scrolling while the button is held (wheel, trackpad or auto-scroll at the edge)
+    // extends the selection to whatever is under the pointer, and rendered elements
+    // keep their size until the drag ends.
+    const long=Array.from({length:30},(_,i)=>`## Part ${i}\n\nWords ${i} with **bold** and $x_${i}$.\n\n$$\n\\sum_{k=0}^{${i}} k\n$$\n`).join('\n');
+    await setup(long);window.margin.setSelection(0);await pause();
+    const scroller=document.querySelector('.cm-scroller');scroller.scrollTop=0;await pause();
+    start=point('Words 1','start');mouse(start);await pause();
+    const pressed=window.margin.selectionState(),blocks=document.querySelectorAll('.block-preview').length;
+    const heads=[];
+    for(let i=0;i<12;i++){scroller.scrollTop+=60;for(let j=0;j<3;j++)await pause();heads.push(window.margin.selectionState().head);}
+    const during=window.margin.selectionState(),blocksDuring=document.querySelectorAll('.block-preview').length;
+    document.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,clientX:start.x+1,clientY:start.y+1,bubbles:true}));await pause();
+    const nudged=window.margin.selectionState();
+    mouse({...start,x:start.x+1,y:start.y+1},'mouseup');await pause();await pause();
+    const released=window.margin.selectionState();
+    check('Scrolling during a drag extends the selection to the text under the pointer',during.anchor===pressed.anchor&&during.head>pressed.anchor+150&&heads.every((h,i)=>!i||h>=heads[i-1]),{pressed,during,heads});
+    check('Nudging the pointer after scrolling keeps the scrolled selection',nudged.anchor===pressed.anchor&&nudged.head>=during.head-40,{during,nudged});
+    check('Rendered blocks stay drawn while dragging through them',blocksDuring>=blocks-1,{blocks,blocksDuring});
+    check('Releasing the drag keeps the selection',released.anchor===nudged.anchor&&released.head===nudged.head,{nudged,released});
+    // An element whose source the caret revealed keeps showing it while a drag
+    // that starts elsewhere selects across it, so the text does not jump under the pointer.
+    const revealed='Intro words here.\n\n$$\nx^2 + y^2\n$$\n\nAfter words here.';
+    await setup(revealed);window.margin.setSelection(revealed.indexOf('x^2'));await pause();
+    const sourceShown=()=>!document.querySelector('.block-preview')&&[...document.querySelectorAll('.cm-line')].some(line=>line.textContent==='x^2 + y^2');
+    const shownBefore=sourceShown();
+    start=point('After','start');mouse(start);await pause();
+    const shownAtPress=sourceShown();
+    const target=point('Intro','start');
+    document.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,clientX:target.x,clientY:target.y,bubbles:true}));await pause();
+    const shownDuring=sourceShown();
+    mouse(target,'mouseup');await pause();await pause();
+    const dragged=window.margin.selectionState();
+    check('A revealed element keeps its source while a drag from outside selects across it',shownBefore&&shownAtPress&&shownDuring&&sourceShown(),{shownBefore,shownAtPress,shownDuring,after:sourceShown()});
+    check('That drag selects from where it started to the pointer',dragged.anchor===revealed.indexOf('After')&&dragged.head===revealed.indexOf('Intro'),{dragged,expected:[revealed.indexOf('After'),revealed.indexOf('Intro')]});
     window.selectionResult=results;
   };
 })();

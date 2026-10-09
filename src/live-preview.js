@@ -22,13 +22,33 @@ export const editingField = StateField.define({
   }
 });
 
+// While a mouse drag is selecting, markup stays revealed as it was when the drag
+// began (where the caret was, plus where the drag started) instead of following
+// the growing selection: revealing or re-rendering elements mid-drag would resize
+// text under the pointer and throw the selection (and auto-scroll) off. So an
+// element clicked into keeps its source while a drag from elsewhere selects
+// across it. The selection reveals its own markup once the button is released.
+const pointerDragEffect = StateEffect.define();
+const pointerDrag = StateField.define({
+  create: () => null,
+  update(value, transaction) {
+    if (value && transaction.docChanged) value = value.map(range => ({ from: transaction.changes.mapPos(range.from, -1), to: transaction.changes.mapPos(range.to, 1) }));
+    for (const effect of transaction.effects) if (effect.is(pointerDragEffect)) value = effect.value;
+    return value;
+  }
+});
+function revealRanges(state) {
+  const before = state.field(pointerDrag);
+  if (!before) return state.selection.ranges;
+  return [...before.map(range => EditorSelection.range(range.from, range.to)), ...state.selection.ranges.map(range => EditorSelection.cursor(range.anchor))];
+}
 function touches(state, from, to) {
-  return state.field(editingField) && state.selection.ranges.some(range => range.from <= to && range.to >= from);
+  return state.field(editingField) && revealRanges(state).some(range => range.from <= to && range.to >= from);
 }
 // Images reveal their source only with the caret inside them, so a pasted or
 // dropped image shows at once with the caret just after it.
 function inside(state, from, to) {
-  return state.field(editingField) && state.selection.ranges.some(range => range.empty ? range.head >= from && range.head < to : range.from < to && range.to > from);
+  return state.field(editingField) && revealRanges(state).some(range => range.empty ? range.head >= from && range.head < to : range.from < to && range.to > from);
 }
 
 /** The source range of the image under `pos` (Markdown or HTML `<img>`), if any. */
@@ -55,6 +75,8 @@ const heldImage = StateField.define({
   update(held, transaction) {
     const { state } = transaction;
     for (const effect of transaction.effects) if (effect.is(holdImageEffect)) return effect.value;
+    if (!transaction.docChanged && !transaction.selection) return held;
+    if (transaction.startState.field(pointerDrag) && held) return transaction.docChanged ? { from: transaction.changes.mapPos(held.from, 1), to: transaction.changes.mapPos(held.to, -1) } : held;
     if (held && transaction.docChanged) held = { from: transaction.changes.mapPos(held.from, 1), to: transaction.changes.mapPos(held.to, -1) };
     if (held && !(held.from < held.to && state.selection.ranges.some(range => range.from <= held.to && range.to >= held.from))) held = null;
     for (const range of state.selection.ranges) {
@@ -465,7 +487,7 @@ export const blockField = StateField.define({
   create: blockDecorations,
   update(value, transaction) {
     if (transaction.docChanged || transaction.selection || syntaxTree(transaction.startState) !== syntaxTree(transaction.state)
-      || transaction.effects.some(e => e.is(editingEffect) || e.is(refreshEffect))) return blockDecorations(transaction.state);
+      || transaction.effects.some(e => e.is(editingEffect) || e.is(refreshEffect) || e.is(pointerDragEffect))) return blockDecorations(transaction.state);
     return value;
   },
   provide: field => EditorView.decorations.from(field, value => value.decorations)
@@ -746,7 +768,7 @@ export const inlinePreview = ViewPlugin.fromClass(class {
   update(update) {
     if (update.docChanged || update.viewportChanged || update.selectionSet || update.focusChanged
       || syntaxTree(update.startState) !== syntaxTree(update.state)
-      || update.transactions.some(t => t.effects.some(e => e.is(editingEffect) || e.is(refreshEffect)))) this.decorations = inlineDecorations(update.view);
+      || update.transactions.some(t => t.effects.some(e => e.is(editingEffect) || e.is(refreshEffect) || e.is(pointerDragEffect)))) this.decorations = inlineDecorations(update.view);
   }
 }, {
   decorations: plugin => plugin.decorations,
@@ -776,8 +798,24 @@ export const stableMouseSelection = EditorView.mouseSelectionStyle.of((view, sta
   const initial = repeat ? last.initial : view.posAndSideAtCoords({ x: start.clientX, y: start.clientY }, false);
   if (!initial) return null;
   lastClicks.set(view, { x: start.clientX, y: start.clientY, initial, doc: view.state.doc });
-  let anchor = initial.pos;
+  let anchor = initial.pos, head = anchor, assoc = initial.assoc;
   let original = view.state.selection;
+  // Scrolling (the wheel, a trackpad or auto-scroll at the edge) moves the text
+  // under a still pointer, so it counts as movement and re-selects at once.
+  const scroller = view.scrollDOM, startScroll = { x: scroller.scrollLeft, y: scroller.scrollTop };
+  let pointer = start;
+  const track = event => { pointer = event; if (event.buttons === 0) end(); };
+  const scrolled = () => document.dispatchEvent(new MouseEvent('mousemove', { clientX: pointer.clientX, clientY: pointer.clientY, button: 0, buttons: 1, shiftKey: pointer.shiftKey, metaKey: pointer.metaKey, altKey: pointer.altKey, ctrlKey: pointer.ctrlKey }));
+  const end = () => {
+    document.removeEventListener('mousemove', track, true);
+    document.removeEventListener('mouseup', end, true);
+    scroller.removeEventListener('scroll', scrolled);
+    if (view.state.field(pointerDrag)) setTimeout(() => view.dispatch({ effects: pointerDragEffect.of(null) }));
+  };
+  document.addEventListener('mousemove', track, true);
+  document.addEventListener('mouseup', end, true);
+  scroller.addEventListener('scroll', scrolled);
+  view.dispatch({ effects: pointerDragEffect.of(view.state.field(editingField) ? view.state.selection.ranges.map(({ from, to }) => ({ from, to })) : []) });
   const rangeAt = (pos, assoc = 1) => {
     if (start.detail === 2) return view.state.wordAt(pos) ?? EditorSelection.cursor(pos, assoc);
     if (start.detail >= 3) {
@@ -788,9 +826,11 @@ export const stableMouseSelection = EditorView.mouseSelectionStyle.of((view, sta
   };
   return {
     get(event, extend, multiple) {
-      let head = anchor, assoc = initial.assoc;
-      const moved = event !== start && (Math.abs(event.clientX - start.clientX) > 3 || Math.abs(event.clientY - start.clientY) > 3);
-      if (moved) {
+      const dx = event.clientX - start.clientX + scroller.scrollLeft - startScroll.x;
+      const dy = event.clientY - start.clientY + scroller.scrollTop - startScroll.y;
+      if (event === start || (Math.abs(dx) <= 3 && Math.abs(dy) <= 3)) { head = anchor; assoc = initial.assoc; }
+      else {
+        // Keep the last head if the pointer is somewhere no position can be read.
         const point = view.posAndSideAtCoords({ x: event.clientX, y: event.clientY }, false);
         if (point) { head = point.pos; assoc = point.assoc; }
       }
@@ -801,7 +841,7 @@ export const stableMouseSelection = EditorView.mouseSelectionStyle.of((view, sta
       return multiple ? original.addRange(range) : EditorSelection.create([range]);
     },
     update(update) {
-      if (update.docChanged) { anchor = update.changes.mapPos(anchor); original = original.map(update.changes); }
+      if (update.docChanged) { anchor = update.changes.mapPos(anchor); head = update.changes.mapPos(head); original = original.map(update.changes); }
     }
   };
 });
@@ -860,4 +900,4 @@ export function tableElement(view, from) {
   return [...view.contentDOM.querySelectorAll('.table-widget')].find(element => element.tableWidget?.from === from) ?? null;
 }
 
-export const livePreview = [editingField, heldImage, clickedImage, blockField, inlinePreview, diagramAppearance, stableMouseSelection, newLinesAroundTables, typingAtTables];
+export const livePreview = [editingField, pointerDrag, heldImage, clickedImage, blockField, inlinePreview, diagramAppearance, stableMouseSelection, newLinesAroundTables, typingAtTables];

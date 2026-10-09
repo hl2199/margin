@@ -4,7 +4,7 @@ import { history, historyKeymap, defaultKeymap, undo, redo, indentWithTab, curso
 import { markdown, markdownKeymap, insertNewlineContinueMarkupCommand } from '@codemirror/lang-markdown';
 import { syntaxTree } from '@codemirror/language';
 import { markdownExtensions } from './markdown-syntax.js';
-import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
+import { search, searchKeymap, openSearchPanel, closeSearchPanel, searchPanelOpen } from '@codemirror/search';
 import { editingField, editingEffect, refreshEffect, livePreview, specialBlocks, tableElement, wrapCellSelection, bumpImageVersion, diagramsDrawn } from './live-preview.js';
 import './style.css';
 import 'katex/dist/katex.min.css';
@@ -136,7 +136,8 @@ const extensions = () => [
     { key: 'Mod-b', run: () => wrapSelection('**') },
     { key: 'Mod-i', run: () => wrapSelection('*') },
     { key: 'Mod-k', run: () => wrapSelection('[', '](url)') },
-    { key: 'Escape', run: () => { view.dispatch({ effects: editingEffect.of(false) }); view.contentDOM.blur(); return true; } },
+    // Escape closes the find bar first, then leaves editing.
+    { key: 'Escape', run: () => { if (searchPanelOpen(view.state)) return closeSearchPanel(view); view.dispatch({ effects: editingEffect.of(false) }); view.contentDOM.blur(); return true; } },
     ...historyKeymap, ...searchKeymap,
     ...markdownKeymap.map(binding => binding.key === 'Enter' ? { ...binding, run: continueMarkup } : binding),
     ...defaultKeymap, indentWithTab

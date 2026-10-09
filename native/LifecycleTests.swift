@@ -148,13 +148,15 @@ import PDFKit
         let tabs = controller(showsWindows: true)
         launch(tabs)
         let marginMenu = NSApp.mainMenu!.item(withTitle: "Margin")!.submenu!
-        let settingsItem = marginMenu.item(withTitle: "Settings…")!
-        check("Settings has Command-comma shortcut", settingsItem.keyEquivalent == "," && settingsItem.keyEquivalentModifierMask == [.command])
-        let preference = tabs.settings.preferTabs
-        check("Prefer tabs defaults to off", preference.state == .off && !defaults.bool(forKey: "preferTabs"))
-        preference.performClick(nil)
-        let restored = SettingsWindow(defaults: UserDefaults(suiteName: settingsSuite)!)
-        check("checkbox persists preference for a fresh Settings controller", defaults.bool(forKey: "preferTabs") && restored.preferTabs.state == .on)
+        check("Margin menu has no Settings window", marginMenu.item(withTitle: "Settings…") == nil)
+        let viewItems = NSApp.mainMenu!.item(withTitle: "View")!.submenu!
+        let tabsItem = viewItems.item(withTitle: "Open Documents in Tabs")!
+        let toggleTabs = { viewItems.performActionForItem(at: viewItems.index(of: tabsItem)) }
+        _ = tabs.validateMenuItem(tabsItem)
+        check("View offers Open Documents in Tabs, off by default", tabsItem.state == .off && !defaults.bool(forKey: "preferTabs"))
+        toggleTabs()
+        _ = tabs.validateMenuItem(tabsItem)
+        check("Open Documents in Tabs persists and shows a checkmark", UserDefaults(suiteName: settingsSuite)!.bool(forKey: "preferTabs") && tabsItem.state == .on)
         let blank = tabs.editors[0]
         tabs.open(first)
         check("tabs enabled still reuse startup window", await wait { tabs.editors.count == 1 && tabs.editors[0] === blank && blank.file.url == first })
@@ -168,36 +170,31 @@ import PDFKit
         check("reopening existing document selects its tab", tabs.editors.count == 2 && blank.window.tabGroup?.selectedWindow === blank.window)
         secondTab.closeWithoutPrompt()
         check("closing one tab retains the other document", tabs.editors.count == 1 && tabs.editors[0] === blank && blank.file.url == first)
-        preference.performClick(nil)
+        toggleTabs()
         tabs.open(second)
         let separate = tabs.editors.last!
         check("turning preference off opens a separate window", tabs.editors.count == 2 && !(blank.window.tabbedWindows ?? []).contains(separate.window))
-        preference.performClick(nil)
+        toggleTabs()
         blank.show()
-        marginMenu.performActionForItem(at: marginMenu.indexOfItem(withTitle: "Settings…"))
-        check("Settings opens independently of document tabs", tabs.settings.window!.isVisible && tabs.settings.window!.tabbingMode == .disallowed && tabs.editors.count == 2)
-        let settingsView = tabs.settings.window!.contentView!
-        settingsView.layoutSubtreeIfNeeded()
-        if let bitmap = settingsView.bitmapImageRepForCachingDisplay(in: settingsView.bounds) {
-            settingsView.cacheDisplay(in: settingsView.bounds, to: bitmap)
-            // AppKit's cached content excludes the window's opaque background.
-            let preview = NSImage(size: settingsView.bounds.size)
-            preview.lockFocus()
-            settingsView.effectiveAppearance.performAsCurrentDrawingAppearance {
-                NSColor.windowBackgroundColor.setFill()
-                settingsView.bounds.fill()
-                bitmap.draw(in: settingsView.bounds)
-            }
-            preview.unlockFocus()
-            if let tiff = preview.tiffRepresentation, let image = NSBitmapImageRep(data: tiff) {
-                try? image.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: CommandLine.arguments[1]).deletingLastPathComponent().appendingPathComponent("settings.png"))
-            }
-        }
+        let appearanceMenu = viewItems.item(withTitle: "Appearance")!.submenu!
+        let choose = { (title: String) in appearanceMenu.performActionForItem(at: appearanceMenu.indexOfItem(withTitle: title)) }
+        let prefersDark = { await self.js(blank, "matchMedia('(prefers-color-scheme: dark)').matches") as? Bool }
+        choose("Dark")
+        let darkItem = appearanceMenu.item(withTitle: "Dark")!
+        _ = tabs.validateMenuItem(darkItem)
+        let dark = await wait { await prefersDark() == true }
+        check("View > Appearance > Dark darkens the app and its documents, with a checkmark", dark && NSApp.appearance?.name == .darkAqua && defaults.string(forKey: "appearance") == "dark" && darkItem.state == .on)
+        choose("Light")
+        let light = await wait { await prefersDark() == false }
+        check("View > Appearance > Light lightens documents", light && NSApp.appearance?.name == .aqua && defaults.string(forKey: "appearance") == "light")
+        choose("Match System")
+        let systemItem = appearanceMenu.item(withTitle: "Match System")!
+        _ = tabs.validateMenuItem(systemItem)
+        check("View > Appearance > Match System follows the system again", NSApp.appearance == nil && defaults.string(forKey: "appearance") == nil && systemItem.state == .on)
         tabs.newDocument(nil)
         let newTab = tabs.editors.last!
-        check("new document joins active document group while Settings is open", blank.window.tabbedWindows?.contains(newTab.window) == true && !(separate.window.tabbedWindows ?? []).contains(newTab.window))
+        check("new document joins active document group", blank.window.tabbedWindows?.contains(newTab.window) == true && !(separate.window.tabbedWindows ?? []).contains(newTab.window))
         check("new tab is selected and preserves existing file", newTab.window.tabGroup?.selectedWindow === newTab.window && blank.file.text == "# First\n\nDocument one.\n" && !blank.file.isDirty)
-        tabs.settings.close()
         close(tabs)
         await experienceChecks()
         defaults.removePersistentDomain(forName: settingsSuite)

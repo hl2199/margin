@@ -134,6 +134,12 @@ final class BridgeRunner: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         check("saved document info clears edited title", await evaluate("document.title") as? String == "saved.md — Margin")
         _ = await evaluate("window.margin.command('find')")
         check("native find command opens search", await evaluate("!!document.querySelector('.cm-search input')") as? Bool == true)
+        let escape = "dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', keyCode: 27, bubbles: true, cancelable: true}))"
+        _ = await evaluate("document.querySelector('.cm-search input').focus(); document.activeElement.\(escape)")
+        check("Escape in the find field closes the find bar", await evaluate("!document.querySelector('.cm-search')") as? Bool == true)
+        _ = await evaluate("window.margin.command('find'); window.margin.setSelection(0); document.querySelector('.cm-content').\(escape)")
+        check("Escape in the document closes the find bar first", await evaluate("!document.querySelector('.cm-search') && document.querySelector('.cm-content') === document.activeElement") as? Bool == true)
+        _ = await evaluate("window.margin.command('find')")
         _ = await evaluate("window.margin.command('save'); window.margin.command('saveAs');")
         // A subsequent evaluation gives the native message queue a turn.
         _ = await evaluate("window.margin.getText()")

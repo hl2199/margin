@@ -6,46 +6,6 @@ func json(_ value: Any) -> String {
     String(data: try! JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]), encoding: .utf8)!
 }
 
-final class SettingsWindow: NSWindowController {
-    private let defaults: UserDefaults
-    let preferTabs = NSButton(checkboxWithTitle: "Prefer tabs", target: nil, action: nil)
-
-    init(defaults: UserDefaults) {
-        self.defaults = defaults
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 150),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        super.init(window: window)
-        window.title = "Settings"
-        window.tabbingMode = .disallowed
-        window.isReleasedWhenClosed = false
-        window.center()
-        preferTabs.state = defaults.bool(forKey: "preferTabs") ? .on : .off
-        preferTabs.target = self
-        preferTabs.action = #selector(changePreference(_:))
-        let description = NSTextField(wrappingLabelWithString: "Open additional documents in tabs instead of new windows.")
-        description.textColor = .secondaryLabelColor
-        description.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let content = window.contentView!
-        for view in [preferTabs, description] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            content.addSubview(view)
-        }
-        NSLayoutConstraint.activate([
-            preferTabs.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 28),
-            preferTabs.topAnchor.constraint(equalTo: content.topAnchor, constant: 28),
-            description.leadingAnchor.constraint(equalTo: preferTabs.leadingAnchor, constant: 20),
-            description.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
-            description.topAnchor.constraint(equalTo: preferTabs.bottomAnchor, constant: 8)
-        ])
-    }
-
-    required init?(coder: NSCoder) { fatalError("SettingsWindow is created programmatically") }
-
-    @objc private func changePreference(_ sender: NSButton) {
-        defaults.set(sender.state == .on, forKey: "preferTabs")
-    }
-}
-
 /// Dropping Markdown files onto a document opens them; dropping images inserts
 /// them at the drop point. Other drops reach the editor.
 final class DocumentWebView: WKWebView {
@@ -556,7 +516,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private let reportError: (Error) -> Void
     private let instanceRouter: SingleInstanceRouter?
     private let defaults: UserDefaults
-    private(set) lazy var settings = SettingsWindow(defaults: defaults)
     private var finishedLaunching = false
     private var forwardingLaunch = false
     private var launchURLs: [URL] = []
@@ -595,6 +554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     func applicationDidFinishLaunching(_ notification: Notification) {
         finishedLaunching = true
         if instanceRouter?.isPrimary == false { forwardLaunch(); return }
+        applyAppearance()
         buildMenus()
         if editors.isEmpty {
             add(MarkdownFile(), startupPlaceholder: true)
@@ -633,7 +593,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         if showsWindows { editor.show() }
     }
 
-    @objc func showSettings(_ sender: Any?) { settings.showWindow(sender) }
+    /// Light, Dark, or (when unset) whatever the system uses.
+    static let appearances: [(title: String, name: String?)] = [("Match System", nil), ("Light", "light"), ("Dark", "dark")]
+    private func applyAppearance() {
+        switch defaults.string(forKey: "appearance") {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
+    @objc func chooseAppearance(_ sender: NSMenuItem) {
+        defaults.set(sender.representedObject as? String, forKey: "appearance")
+        applyAppearance()
+    }
+    @objc func toggleTabs(_ sender: Any?) { defaults.set(!defaults.bool(forKey: "preferTabs"), forKey: "preferTabs") }
     @objc func toggleOutline(_ sender: Any?) { togglePanel("showOutline") }
     @objc func toggleWordCount(_ sender: Any?) { togglePanel("showWordCount") }
     private func togglePanel(_ key: String) {
@@ -646,6 +619,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             menuItem.title = defaults.bool(forKey: "showOutline") ? "Hide Outline" : "Show Outline"
         } else if menuItem.action == #selector(toggleWordCount(_:)) {
             menuItem.title = defaults.bool(forKey: "showWordCount") ? "Hide Word Count" : "Show Word Count"
+        } else if menuItem.action == #selector(toggleTabs(_:)) {
+            menuItem.state = defaults.bool(forKey: "preferTabs") ? .on : .off
+        } else if menuItem.action == #selector(chooseAppearance(_:)) {
+            menuItem.state = menuItem.representedObject as? String == defaults.string(forKey: "appearance") ? .on : .off
         }
         return true
     }
@@ -866,7 +843,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
         let app = menu("Margin")
         item(app, "About Margin", #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
-        item(app, "Settings…", #selector(showSettings(_:)), ",", target: self)
         app.addItem(.separator())
         item(app, "Hide Margin", #selector(NSApplication.hide(_:)), "h")
         item(app, "Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option])
@@ -901,8 +877,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         item(view, "Show Outline", #selector(toggleOutline(_:)), "s", [.command, .control], target: self)
         item(view, "Show Word Count", #selector(toggleWordCount(_:)), "", target: self)
         view.addItem(.separator())
+        let appearance = NSMenu(title: "Appearance")
+        for choice in Self.appearances {
+            let entry = NSMenuItem(title: choice.title, action: #selector(chooseAppearance(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = choice.name
+            appearance.addItem(entry)
+        }
+        let appearanceItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+        appearanceItem.submenu = appearance
+        view.addItem(appearanceItem)
+        view.addItem(.separator())
         documentZoom.addItems(to: view)
         view.addItem(.separator())
+        item(view, "Open Documents in Tabs", #selector(toggleTabs(_:)), "", target: self)
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         let window = menu("Window")
         item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
