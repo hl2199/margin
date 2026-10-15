@@ -497,9 +497,12 @@ export const specialBlocks = state => state.field(blockField).ranges;
 
 // Inline widgets -----------------------------------------------------------------
 
+// Nested bullets cycle through these by depth, as in most word processors.
+const bulletSymbols = ['•', '◦', '▪'];
 class BulletWidget extends WidgetType {
-  eq() { return true; }
-  toDOM() { const span = document.createElement('span'); span.className = 'md-bullet'; span.textContent = '•'; return span; }
+  constructor(depth = 0) { super(); this.depth = depth; }
+  eq(other) { return other.depth === this.depth; }
+  toDOM() { const span = document.createElement('span'); span.className = 'md-bullet md-bullet-' + this.depth % bulletSymbols.length; span.textContent = bulletSymbols[this.depth % bulletSymbols.length]; return span; }
 }
 class CheckboxWidget extends WidgetType {
   constructor(checked, at) { super(); this.checked = checked; this.at = at; }
@@ -662,6 +665,18 @@ function inlineDecorations(view) {
         const line = state.doc.lineAt(node.from);
         const end = state.sliceDoc(node.to, node.to + 1) === ' ' ? node.to + 1 : node.to;
         if (!lineTouched(line)) replace(node.from, end, hide); else decorations.push(muted.range(node.from, node.to));
+      } else if (name === 'ListItem') {
+        // Nested items get extra indentation per level, beyond their leading spaces,
+        // so the structure reads at a glance. A deeper item's class wins (style.css).
+        let depth = -1;
+        for (let list = node.node.parent; list; list = list.parent) if (list.name === 'BulletList' || list.name === 'OrderedList') depth++;
+        if (depth > 0) {
+          for (let pos = Math.max(node.from, from); pos <= Math.min(node.to, to);) {
+            const line = state.doc.lineAt(pos);
+            decorations.push(Decoration.line({ class: `md-list-${Math.min(depth, 6)}` }).range(line.from));
+            pos = line.to + 1;
+          }
+        }
       } else if (name === 'ListMark') {
         const item = node.node.parent;
         const task = item?.getChild('Task')?.getChild('TaskMarker');
@@ -675,7 +690,11 @@ function inlineDecorations(view) {
             if (checked) if (item.to > task.to + 1) decorations.push(Decoration.mark({ class: 'md-task-done' }).range(task.to + 1, item.to));
           } else decorations.push(muted.range(node.from, task.to));
         } else if (ordered) decorations.push(Decoration.mark({ class: 'md-list-number' }).range(node.from, node.to));
-        else if (!touches(state, node.from, zoneEnd)) replace(node.from, node.to, Decoration.replace({ widget: new BulletWidget() }));
+        else if (!touches(state, node.from, zoneEnd)) {
+          let depth = 0;
+          for (let list = item?.parent?.parent; list; list = list.parent) if (list.name === 'BulletList' || list.name === 'OrderedList') depth++;
+          replace(node.from, node.to, Decoration.replace({ widget: new BulletWidget(depth) }));
+        }
         else decorations.push(muted.range(node.from, node.to));
       } else if (name in markClasses || name === 'InlineCode') {
         const marks = node.node.getChildren(hiddenMarks[name]);

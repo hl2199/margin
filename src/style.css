@@ -116,7 +116,20 @@ body.command-down .prose a { cursor:pointer; }
 .md-code-last { padding-bottom:6px !important; border-radius:0 0 4px 4px; }
 .md-fence-label { position:absolute; right:10px; color:var(--muted); font-size:11px; font-family:-apple-system,sans-serif; }
 .md-bullet { display:inline-block; min-width:.9em; }
+/* Bullets are drawn as shapes (disc, ring, square by depth) so the levels are
+   distinct at a glance; the glyph stays in the DOM for copying but is invisible. */
+.md-bullet { position:relative; color:transparent; }
+.md-bullet::before { content:''; position:absolute; left:.05em; top:50%; width:.38em; height:.38em; transform:translateY(-50%); box-sizing:border-box; background:var(--ink); border-radius:50%; }
+.md-bullet-1::before { background:transparent; border:.085em solid var(--ink); }
+.md-bullet-2::before { width:.34em; height:.34em; border-radius:.04em; }
 .md-list-number { font-variant-numeric:tabular-nums; }
+/* Extra indentation per nesting level (the source's own spaces come on top). */
+.cm-line.md-list-1 { padding-left:1em !important; }
+.cm-line.md-list-2 { padding-left:2em !important; }
+.cm-line.md-list-3 { padding-left:3em !important; }
+.cm-line.md-list-4 { padding-left:4em !important; }
+.cm-line.md-list-5 { padding-left:5em !important; }
+.cm-line.md-list-6 { padding-left:6em !important; }
 .md-task { margin:0 .35em 0 0; pointer-events:auto; cursor:default; }
 .md-task-done { color:var(--muted); text-decoration:line-through; }
 .md-rule { display:inline-block; width:100%; height:0; border-top:1px solid var(--border); vertical-align:middle; }

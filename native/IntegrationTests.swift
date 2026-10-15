@@ -290,6 +290,11 @@ final class BridgeRunner: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         check("Backspace joins paragraphs without losing text", await evaluate("window.margin.getText()") as? String == "OneTwo")
         _ = await evaluate("window.margin.command('undo')")
         check("undo restores deleted paragraph breaks", await evaluate("window.margin.getText()") as? String == "One\n\nTwo")
+        let bulletDoc = "- one\n  - two\n    - three\n      - four\n1. first\n   - under a number\n- back"
+        _ = await evaluate("window.margin.loadDocument(\(json(["text": bulletDoc, "name": "bullets.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
+        check("nested bullets cycle through • ◦ ▪ by depth", await evaluate("[...document.querySelectorAll('.md-bullet')].map(b => b.textContent).join('')") as? String == "•◦▪•◦•")
+        check("bullets keep their Markdown source", await evaluate("window.margin.getText()") as? String == bulletDoc)
+        check("each nesting level is indented at least a character width further", await evaluate("(() => { const x = [...document.querySelectorAll('.md-bullet')].slice(0, 4).map(b => b.getBoundingClientRect().left), em = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); return x.every((v, i) => !i || v - x[i - 1] >= em); })()") as? Bool == true)
         finish()
     }
 
