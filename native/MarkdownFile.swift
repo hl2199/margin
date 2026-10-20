@@ -23,7 +23,9 @@ final class MarkdownFile {
     private var newline = "\n"
     var text: String
     var isDirty: Bool { text != savedText }
-    var name: String { url?.lastPathComponent ?? "Untitled.md" }
+    /// The name an untitled document was given before its first save.
+    var untitledName: String?
+    var name: String { url?.lastPathComponent ?? untitledName ?? "Untitled.md" }
 
     init(text: String = "") {
         self.text = text
@@ -43,6 +45,11 @@ final class MarkdownFile {
         savedText = text
         diskBytes = data
         self.url = url.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    /// The file was renamed or moved on disk; its contents are unchanged.
+    func moved(to destination: URL) {
+        url = destination.resolvingSymlinksInPath().standardizedFileURL
     }
 
     func changedOnDisk() -> Bool {

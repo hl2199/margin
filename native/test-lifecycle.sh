@@ -11,7 +11,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 PLIST
 /usr/bin/xcrun swiftc -swift-version 5 -module-cache-path "$project_root/build/module-cache" -framework AppKit -framework WebKit -framework PDFKit \
   "$project_root/native/MarkdownFile.swift" "$project_root/native/DocumentAssets.swift" "$project_root/native/DocumentZoom.swift" \
-  "$project_root/native/SingleInstance.swift" "$project_root/native/PDFExport.swift" "$project_root/native/DocumentImages.swift" "$project_root/native/Application.swift" "$project_root/native/LifecycleTests.swift" \
+  "$project_root/native/SingleInstance.swift" "$project_root/native/PDFExport.swift" "$project_root/native/DocumentImages.swift" "$project_root/native/DocumentRename.swift" "$project_root/native/Application.swift" "$project_root/native/LifecycleTests.swift" \
   -parse-as-library -o "$bundle/Contents/MacOS/LifecycleTests"
 /usr/bin/codesign --force --sign - "$bundle"
 "$bundle/Contents/MacOS/LifecycleTests" "$run_root/results.json" 2>&1 | tee "$run_root/output.txt"

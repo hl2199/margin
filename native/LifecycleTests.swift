@@ -248,7 +248,14 @@ import PDFKit
         _ = await ready(view, text: outlined)
         reopened.toggleOutline(nil)
         reopened.toggleWordCount(nil)
-        check("outline lists headings with indentation", await wait { await self.js(view, "[...document.querySelectorAll('#outline a')].map(a => a.textContent + ':' + a.style.paddingLeft).join('|')") as? String == "Notes:8px|Details:20px|The End:20px" })
+        check("outline shows a lone top heading as the title and its sections as the top level", await wait { await self.js(view, "[...document.querySelectorAll('#outline a')].map(a => a.textContent + ':' + a.className.replace(' current', '')).join('|')") as? String == "Notes:title|Details:depth-0|The End:depth-0" })
+        let outlineWidth = "Math.round(document.querySelector('#outline').getBoundingClientRect().width)"
+        _ = await js(view, "(() => { const handle = document.querySelector('#outline-resizer'), at = { bubbles: true, button: 0, buttons: 1, clientY: 100 }; handle.dispatchEvent(new MouseEvent('mousedown', { ...at, clientX: 220 })); document.dispatchEvent(new MouseEvent('mousemove', { ...at, clientX: 300 })); document.dispatchEvent(new MouseEvent('mouseup', { ...at, clientX: 300, buttons: 0 })); })()")
+        check("dragging the outline's edge saves its width", await wait { self.defaults.double(forKey: "outlineWidth") == 300 })
+        view.applyPanels()
+        check("the saved width is restored", await wait { await self.js(view, outlineWidth) as? Int == 300 })
+        _ = await js(view, "document.querySelector('#outline-resizer').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))")
+        check("double-clicking the edge resets the width", await wait { let width = await self.js(view, outlineWidth) as? Int; return self.defaults.object(forKey: "outlineWidth") == nil && width == 220 })
         check("word count appears", await wait { (await self.js(view, "document.querySelector('#word-count').hidden ? '' : document.querySelector('#word-count').textContent") as? String)?.hasSuffix(" words") == true })
         let viewMenu = NSApp.mainMenu!.item(withTitle: "View")!.submenu!
         let fileItems = NSApp.mainMenu!.item(withTitle: "File")!.submenu!
@@ -260,6 +267,40 @@ import PDFKit
         let pdf = PDFDocument(url: pdfURL)
         let pdfText = (0..<(pdf?.pageCount ?? 0)).compactMap { pdf?.page(at: $0)?.string }.joined(separator: "\n")
         check("Export as PDF writes the rendered document, paginated, without markup", exportError == nil && (pdf?.pageCount ?? 0) >= 2 && pdfText.contains("Notes") && pdfText.contains("The End") && !pdfText.contains("##") && !pdfText.contains("]("))
+        // Renaming from the title.
+        check("rename keeps the extension unless one is typed", (try? DocumentRename.fileName(for: " Field notes ", current: "a.md")) == "Field notes.md" && (try? DocumentRename.fileName(for: "x.markdown", current: "a.md")) == "x.markdown" && (try? DocumentRename.fileName(for: "v1.2", current: "a.md")) == "v1.2.md")
+        check("rename refuses empty names and path separators", (try? DocumentRename.fileName(for: "  ", current: "a.md")) == nil && (try? DocumentRename.fileName(for: "a/b", current: "a.md")) == nil && (try? DocumentRename.fileName(for: "a:b", current: "a.md")) == nil)
+        check("File menu offers Rename…", fileItems.item(withTitle: "Rename…")?.action == #selector(AppDelegate.renameDocument(_:)))
+        let toRename = root.appendingPathComponent("Rename me.md")
+        try! "# Rename me\n".write(to: toRename, atomically: true, encoding: .utf8)
+        reopened.open(toRename)
+        _ = await wait { reopened.editors.contains { $0.file.url == toRename } }
+        let renaming = reopened.editors.first { $0.file.url == toRename }!
+        _ = await ready(renaming, text: "# Rename me\n")
+        renaming.show()
+        if let field = (renaming.window as? DocumentWindow)?.titleField {
+            let point = field.convert(NSPoint(x: field.bounds.midX, y: field.bounds.midY), to: nil)
+            renaming.window.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0, windowNumber: renaming.window.windowNumber, context: nil as NSGraphicsContext?, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        }
+        check("clicking the window title opens the rename popover with the name", renaming.renamePopover?.popover.isShown == true && renaming.renamePopover?.field.stringValue == "Rename me.md")
+        renaming.renamePopover?.field.stringValue = "Renamed"
+        renaming.renamePopover?.finish()
+        let renamed = root.appendingPathComponent("Renamed.md")
+        check("renaming moves the file on disk and retitles the window", FileManager.default.fileExists(atPath: renamed.path) && !FileManager.default.fileExists(atPath: toRename.path) && renaming.file.url == renamed && renaming.window.title == "Renamed.md")
+        _ = await js(renaming, "window.margin.setSelection(window.margin.getText().length); document.execCommand('insertText', false, 'more'); void 0")
+        _ = await wait { renaming.file.text.hasSuffix("more") }
+        try! "taken\n".write(to: root.appendingPathComponent("Taken.md"), atomically: true, encoding: .utf8)
+        var refused = false
+        do { try renaming.rename(to: "Taken") } catch { refused = true }
+        check("renaming to an existing name is refused and changes nothing", refused && renaming.file.url == renamed && (try? String(contentsOf: root.appendingPathComponent("Taken.md"), encoding: .utf8)) == "taken\n")
+        try? renaming.rename(to: "Renamed again")
+        check("renaming keeps unsaved edits", renaming.file.url == root.appendingPathComponent("Renamed again.md") && renaming.file.isDirty && renaming.file.text.hasSuffix("more"))
+        renaming.closeWithoutPrompt()
+        reopened.newDocument(nil)
+        let unnamed = reopened.editors.last!
+        try? unnamed.rename(to: "Draft")
+        check("renaming an untitled document names it for its first save", unnamed.file.url == nil && unnamed.window.title == "Draft.md" && unnamed.file.name == "Draft.md")
+        unnamed.closeWithoutPrompt()
         // Pasted and dropped images (a private pasteboard leaves the user's clipboard alone).
         let pngRep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 5, pixelsHigh: 4, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
         let png = pngRep.representation(using: .png, properties: [:])!

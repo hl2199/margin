@@ -287,13 +287,27 @@ function scrollToAnchor(anchor) {
 }
 function renderOutline() {
   const entries = headings();
-  const top = Math.min(...entries.map(entry => entry.level));
-  outlineElement.replaceChildren(...entries.map(entry => {
+  // Depth is nesting, not heading level, so a skipped level (## then ####)
+  // indents one step. Guide lines and type weight follow depth (style.css).
+  const open = [];
+  const depths = entries.map(entry => {
+    while (open.length && open.at(-1) >= entry.level) open.pop();
+    open.push(entry.level);
+    return open.length - 1;
+  });
+  // A lone top heading followed by sections is the document's title: show it as
+  // such and treat its sections as the top level.
+  const titled = entries.length > 1 && depths.filter(depth => depth === 0).length === 1;
+  outlineElement.replaceChildren(...entries.map((entry, index) => {
+    const depth = titled ? Math.max(depths[index] - 1, 0) : depths[index];
     const link = document.createElement('a');
-    link.textContent = entry.text || 'Untitled heading';
+    const label = document.createElement('span');
+    label.textContent = entry.text || 'Untitled heading';
+    link.append(label);
     link.title = entry.text;
     link.dataset.line = String(entry.line);
-    link.style.paddingLeft = `${8 + (entry.level - top) * 12}px`;
+    link.className = titled && index === 0 ? 'title' : `depth-${Math.min(depth, 3)}`;
+    link.style.setProperty('--depth', depth);
     return link;
   }));
   if (!entries.length) {
@@ -337,13 +351,47 @@ function schedulePanels() {
   }, 120);
 }
 function setPanels(settings) {
-  Object.assign(panels, settings);
+  const { outlineWidth: width, ...shown } = settings;
+  Object.assign(panels, shown);
+  if (width !== undefined) setOutlineWidth(width);
   outlineElement.hidden = !panels.outline;
+  outlineResizer.hidden = !panels.outline;
   wordCountElement.hidden = !panels.wordCount;
   if (panels.outline) renderOutline();
   if (panels.wordCount) renderWordCount();
   view.requestMeasure();
 }
+// The outline's width: drag the divider to resize, double-click it to reset.
+// The app saves the width and passes it back through setPanels.
+const defaultOutlineWidth = 220;
+const clampOutlineWidth = width => Math.round(Math.max(160, Math.min(width, 480, Math.max(160, innerWidth / 2))));
+let outlineWidth = defaultOutlineWidth;
+function setOutlineWidth(width) {
+  outlineWidth = clampOutlineWidth(width || defaultOutlineWidth);
+  document.documentElement.style.setProperty('--outline-width', `${outlineWidth}px`);
+  view.requestMeasure();
+}
+const outlineResizer = document.createElement('div');
+outlineResizer.id = 'outline-resizer';
+outlineResizer.hidden = true;
+outlineResizer.title = 'Drag to resize; double-click to reset';
+outlineElement.after(outlineResizer);
+outlineResizer.addEventListener('mousedown', event => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  document.body.classList.add('resizing-outline');
+  const move = moved => setOutlineWidth(moved.clientX);
+  const up = () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+    document.body.classList.remove('resizing-outline');
+    post('outlineWidth', { width: outlineWidth });
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+});
+outlineResizer.addEventListener('dblclick', () => { setOutlineWidth(defaultOutlineWidth); post('outlineWidth', { width: 0 }); });
+addEventListener('resize', () => { if (panels.outline) setOutlineWidth(outlineWidth); });
 outlineElement.addEventListener('mousedown', event => {
   const link = event.target.closest('a');
   if (!link) return;

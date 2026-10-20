@@ -295,6 +295,18 @@ final class BridgeRunner: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         check("nested bullets cycle through • ◦ ▪ by depth", await evaluate("[...document.querySelectorAll('.md-bullet')].map(b => b.textContent).join('')") as? String == "•◦▪•◦•")
         check("bullets keep their Markdown source", await evaluate("window.margin.getText()") as? String == bulletDoc)
         check("each nesting level is indented at least a character width further", await evaluate("(() => { const x = [...document.querySelectorAll('.md-bullet')].slice(0, 4).map(b => b.getBoundingClientRect().left), em = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); return x.every((v, i) => !i || v - x[i - 1] >= em); })()") as? Bool == true)
+        _ = await evaluate("window.margin.setPanels({outline: true, wordCount: false, outlineWidth: 0})")
+        let drag = { (x: Int) in "(() => { const handle = document.querySelector('#outline-resizer'), at = { bubbles: true, button: 0, buttons: 1, clientY: 100 }; handle.dispatchEvent(new MouseEvent('mousedown', { ...at, clientX: 220 })); document.dispatchEvent(new MouseEvent('mousemove', { ...at, clientX: \(x) })); document.dispatchEvent(new MouseEvent('mouseup', { ...at, clientX: \(x), buttons: 0 })); return [Math.round(document.querySelector('#outline').getBoundingClientRect().width), Math.round(document.querySelector('#editor').getBoundingClientRect().left)]; })()" }
+        check("dragging the outline's edge resizes it and the page beside it", await evaluate(drag(300)) as? [Int] == [300, 300])
+        _ = await evaluate("void 0")
+        check("the new width is reported to the app", messages.contains { $0["type"] as? String == "outlineWidth" && ($0["width"] as? NSNumber)?.intValue == 300 })
+        check("the outline is never narrower than 160 px", (await evaluate(drag(20)) as? [Int])?.first == 160)
+        let widest = await evaluate("Math.round(Math.min(480, innerWidth / 2))") as? Int
+        check("the outline is never wider than 480 px or half the window", (await evaluate(drag(5000)) as? [Int])?.first == widest)
+        _ = await evaluate("document.querySelector('#outline-resizer').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))")
+        check("double-clicking the edge resets the outline to 220 px", await evaluate("Math.round(document.querySelector('#outline').getBoundingClientRect().width)") as? Int == 220)
+        _ = await evaluate("void 0")
+        check("the reset is reported to the app", messages.contains { $0["type"] as? String == "outlineWidth" && ($0["width"] as? NSNumber)?.intValue == 0 })
         finish()
     }
 

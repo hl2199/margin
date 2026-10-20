@@ -88,12 +88,13 @@ final class EditorWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WK
         configuration.setURLSchemeHandler(assetHandler, forURLScheme: "margin-asset")
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         webView = DocumentWebView(frame: .zero, configuration: configuration)
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 780),
+        window = DocumentWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 780),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         super.init()
         configuration.userContentController.add(self, name: "margin")
         window.delegate = self
+        (window as? DocumentWindow)?.onTitleClick = { [weak self] in self?.showRename() }
         window.minSize = NSSize(width: 540, height: 420)
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
@@ -203,6 +204,7 @@ final class EditorWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WK
             }
         case "save": save()
         case "saveAs": save(asNew: true)
+        case "outlineWidth": app?.setOutlineWidth((body["width"] as? NSNumber)?.doubleValue ?? 0)
         case "new": app?.newDocument(nil)
         case "open": app?.openDocument(nil)
         case "openLink":
@@ -489,6 +491,41 @@ final class EditorWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WK
 
     private func present(_ error: Error) { NSAlert(error: error).beginSheetModal(for: window) }
 
+    private(set) var renamePopover: RenamePopover?
+    /// Click on the title or File → Rename…: a popover to rename the document.
+    func showRename() {
+        let popover = RenamePopover(name: file.name) { [weak self] typed in
+            guard let self else { return }
+            do { try self.rename(to: typed) } catch { self.present(error) }
+            self.renamePopover = nil
+        }
+        renamePopover = popover
+        if let field = (window as? DocumentWindow)?.titleField { popover.show(relativeTo: field.bounds, of: field) }
+        else if let content = window.contentView { popover.show(relativeTo: NSRect(x: content.bounds.midX - 1, y: content.bounds.maxY - 1, width: 2, height: 1), of: content) }
+    }
+
+    /// Renames a saved document's file in place (an untitled one just takes the
+    /// name for its first save). Unsaved edits are kept and saved later as usual.
+    func rename(to typed: String) throws {
+        let newName = try DocumentRename.fileName(for: typed, current: file.name)
+        guard newName != file.name else { return }
+        guard let url = file.url else {
+            file.untitledName = newName
+            updateInfo()
+            return
+        }
+        let destination = url.deletingLastPathComponent().appendingPathComponent(newName)
+        // A change of case only is the same file on a case-insensitive disk.
+        if newName.lowercased() != file.name.lowercased(), FileManager.default.fileExists(atPath: destination.path) {
+            throw DocumentRename.RenameError.exists(newName)
+        }
+        try FileManager.default.moveItem(at: url, to: destination)
+        file.moved(to: destination)
+        watchFile()
+        NSDocumentController.shared.noteNewRecentDocumentURL(destination)
+        updateInfo()
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         // Only the bundled entry document can replace the editor. User links are
         // delegated to the system browser; arbitrary document scripts never load.
@@ -529,8 +566,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         let saved = defaults.double(forKey: "zoom")
         return saved >= 0.5 && saved <= 3 ? CGFloat(saved) : DocumentZoom.defaultZoom
     }
-    var panels: [String: Bool] {
-        ["outline": defaults.bool(forKey: "showOutline"), "wordCount": defaults.bool(forKey: "showWordCount")]
+    var panels: [String: Any] {
+        ["outline": defaults.bool(forKey: "showOutline"), "wordCount": defaults.bool(forKey: "showWordCount"),
+         "outlineWidth": defaults.double(forKey: "outlineWidth")]
+    }
+    /// A width of 0 restores the default. Every window follows the latest choice.
+    func setOutlineWidth(_ width: Double) {
+        if width > 0 { defaults.set(width, forKey: "outlineWidth") } else { defaults.removeObject(forKey: "outlineWidth") }
+        editors.forEach { $0.applyPanels() }
     }
     private var quitting = false
     var current: EditorWindow? {
@@ -816,6 +859,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     @objc func saveDocument(_ sender: Any?) { current?.save() }
     @objc func saveDocumentAs(_ sender: Any?) { current?.save(asNew: true) }
     @objc func exportPDF(_ sender: Any?) { current?.exportPDF() }
+    @objc func renameDocument(_ sender: Any?) { current?.showRename() }
     @objc func editorCommand(_ sender: NSMenuItem) { if let name = sender.representedObject as? String { current?.command(name) } }
 
     private func buildMenus() {
@@ -861,6 +905,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         item(file, "Close", #selector(NSWindow.performClose(_:)), "w")
         item(file, "Save", #selector(saveDocument(_:)), "s", target: self)
         item(file, "Save As…", #selector(saveDocumentAs(_:)), "s", [.command, .shift], target: self)
+        item(file, "Rename…", #selector(renameDocument(_:)), "", target: self)
         file.addItem(.separator())
         item(file, "Export as PDF…", #selector(exportPDF(_:)), "e", [.command, .shift], target: self)
         let edit = menu("Edit")

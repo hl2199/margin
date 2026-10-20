@@ -147,13 +147,29 @@ body.command-down .prose a { cursor:pointer; }
 .table-widget th, .table-widget td { cursor:text; }
 .table-widget [contenteditable="true"] { outline:2px solid rgb(0 122 255 / .45); outline-offset:-2px; background:var(--page); white-space:pre-wrap; caret-color:var(--ink); }
 /* Optional outline and word count, toggled from the View menu. */
-#outline { position:fixed; left:0; top:0; bottom:0; width:220px; overflow-y:auto; padding:12px 8px 24px; border-right:1px solid var(--border); font-size:12px; line-height:1.4; }
+#outline { --sidebar:#f7f7f5; --guide:rgb(0 0 0 / .12); position:fixed; left:0; top:0; bottom:0; width:var(--outline-width, 220px); overflow-y:auto; padding:14px 10px 24px; background:var(--sidebar); border-right:1px solid var(--border); font:12px/1.35 -apple-system,sans-serif; }
 #outline[hidden] { display:none; }
-#outline:not([hidden]) + #editor { margin-left:220px; }
-#outline a { display:block; padding:3px 8px; border-radius:4px; color:var(--muted); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default; }
-#outline a:hover { color:var(--ink); }
-#outline a.current { color:var(--ink); background:var(--table); }
+#outline:not([hidden]) ~ #editor { margin-left:var(--outline-width, 220px); }
+/* Entries: depth shown by indent, guide lines (one per enclosing level) and weight. */
+#outline a { --indent:14px; display:block; padding:3px 8px 3px calc(8px + var(--depth, 0) * var(--indent)); border-radius:5px; color:var(--muted); text-decoration:none; cursor:default; overflow-wrap:anywhere;
+  background-image:repeating-linear-gradient(90deg, var(--guide) 0 1px, transparent 1px var(--indent)); background-size:calc(var(--depth, 0) * var(--indent)) 100%; background-position:14px 0; background-repeat:no-repeat; }
+#outline a span { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+#outline a.title { color:var(--ink); font-weight:700; font-size:13px; margin-bottom:4px; }
+#outline a.depth-0 { color:var(--ink); font-weight:600; font-size:12.5px; }
+#outline a.depth-0:not(:first-child):not(.title + a) { margin-top:8px; }
+#outline a.depth-1 { color:var(--quote); }
+#outline a.depth-3 { font-size:11.5px; }
+#outline a:hover { color:var(--ink); background-color:var(--table); }
+#outline a.current { color:var(--ink); background-color:rgb(0 0 0 / .05); }
 #outline .empty { padding:3px 8px; color:var(--muted); }
+#outline-resizer { position:fixed; top:0; bottom:0; left:calc(var(--outline-width, 220px) - 3px); width:7px; cursor:col-resize; z-index:2; }
+#outline-resizer[hidden] { display:none; }
+#outline-resizer:hover, .resizing-outline #outline-resizer { background:linear-gradient(90deg, transparent 2px, rgb(0 122 255 / .5) 2px 4px, transparent 4px); }
+.resizing-outline, .resizing-outline * { cursor:col-resize !important; user-select:none; }
+@media (prefers-color-scheme:dark) {
+  #outline { --sidebar:#1c1c1c; --guide:rgb(255 255 255 / .14); }
+  #outline a.current { background-color:rgb(255 255 255 / .07); }
+}
 #word-count { position:fixed; right:14px; bottom:10px; font-size:11px; color:var(--muted); background:var(--page); padding:2px 6px; border-radius:4px; pointer-events:none; font-variant-numeric:tabular-nums; }
 /* PDF export: the editor itself, read-only, full height, light colours, with
    page breaks kept out of tables, equations, images and code. */
@@ -161,6 +177,6 @@ body.command-down .prose a { cursor:pointer; }
 .print-mode #editor, .print-mode .cm-editor { height:auto; }
 .print-mode .cm-scroller { overflow:visible !important; }
 .print-mode .cm-editor .cm-content { width:auto; max-width:none; margin:0; padding:0 !important; }
-.print-mode .cm-cursorLayer, .print-mode .cm-selectionLayer, .print-mode #notice, .print-mode #word-count, .print-mode #outline { display:none !important; }
+.print-mode .cm-cursorLayer, .print-mode .cm-selectionLayer, .print-mode #notice, .print-mode #word-count, .print-mode #outline, .print-mode #outline-resizer { display:none !important; }
 .print-mode .md-heading { break-after:avoid; }
 .print-mode .table-widget, .print-mode .block-preview, .print-mode .md-image, .print-mode .md-code-line { break-inside:avoid; }
