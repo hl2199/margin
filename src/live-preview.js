@@ -675,7 +675,9 @@ function inlineDecorations(view) {
         const line = state.doc.lineAt(node.from);
         decorations.push(Decoration.line({ class: `md-heading md-heading-${name.slice(-1)}` }).range(line.from));
         const mark = node.node.getChild('HeaderMark');
-        if (mark && !lineTouched(line)) {
+        // A heading with no text keeps its marks, or its line would look empty.
+        const empty = /^\s*#{1,6}(?:\s+#*)?\s*$/.test(state.sliceDoc(node.from, node.to));
+        if (mark && !empty && !lineTouched(line)) {
           const end = state.sliceDoc(mark.to, mark.to + 1) === ' ' ? mark.to + 1 : mark.to;
           replace(mark.from, end, hide);
           // Closing hashes of `# Title #`, with the spaces before them.
@@ -763,12 +765,14 @@ function inlineDecorations(view) {
       } else if (name === 'URL' && !['Link', 'Image', 'Autolink'].includes(node.node.parent?.name)) {
         decorations.push(Decoration.mark({ class: 'md-link md-link-rendered', attributes: { 'data-href': state.sliceDoc(node.from, node.to) } }).range(node.from, node.to));
       } else if (name === 'Image') {
-        if (!imageShown(state, node.from, node.to)) {
-          const url = node.node.getChild('URL');
+        // An image with no address would draw nothing, so it stays as text.
+        const address = node.node.getChild('URL');
+        if (address && address.to > address.from && !imageShown(state, node.from, node.to)) {
+          const url = address;
           const marks = node.node.getChildren('LinkMark');
           const alt = marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : '';
           const img = document.createElement('img');
-          img.setAttribute('src', url ? state.sliceDoc(url.from, url.to) : '');
+          img.setAttribute('src', state.sliceDoc(url.from, url.to));
           img.setAttribute('alt', alt);
           replace(node.from, node.to, Decoration.replace({ widget: new HTMLWidget(img.outerHTML, 'md-image', assetRoot()) }));
         }

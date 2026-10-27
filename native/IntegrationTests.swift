@@ -294,6 +294,13 @@ final class BridgeRunner: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         _ = await evaluate("window.margin.loadDocument(\(json(["text": bulletDoc, "name": "bullets.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
         check("nested bullets cycle through • ◦ ▪ by depth", await evaluate("[...document.querySelectorAll('.md-bullet')].map(b => b.textContent).join('')") as? String == "•◦▪•◦•")
         check("bullets keep their Markdown source", await evaluate("window.margin.getText()") as? String == bulletDoc)
+        var blank: [String] = []
+        for marker in ["#", "###", "### ", "#  #", "![]()", "![alt]()"] {
+            _ = await evaluate("window.margin.loadDocument(\(json(["text": "Before\n\n\(marker)\n\nAfter", "name": "bare.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
+            let shown = await evaluate("document.querySelectorAll('.cm-content > .cm-line')[2]?.innerText.replace(/\\u200b/g, '').trim()") as? String
+            if shown?.isEmpty != false { blank.append(marker) }
+        }
+        check("bare heading marks and address-less images stay visible when the caret leaves", blank.isEmpty, detail: blank.joined(separator: ", "))
         let sized = "![Caption|120](a.png) and ![Both|90x40](b.png)\n\n| Figure |\n| --- |\n| ![Cell\\|80](c.png) |\n\nEnd."
         _ = await evaluate("window.margin.loadDocument(\(json(["text": sized, "name": "sized.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
         let sizes = await evaluate("[...document.querySelectorAll('.md-image img, .table-widget img')].map(i => i.alt + ':' + i.style.width + ':' + i.style.height + ':' + i.style.maxHeight).join('|')") as? String
