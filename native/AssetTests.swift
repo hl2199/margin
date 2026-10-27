@@ -51,6 +51,11 @@ import Foundation
         for path in ["https://example.com/a.svg", "file:///tmp/a.svg", "//server/share.svg", "images\\a.svg", "secret.txt", "../document/secret.txt", text.path, "disguised.svg", "missing.png", "../missing.png", "images", "", "a\0.svg"] {
             try denyURL(request(path), "reject \(path.debugDescription)")
         }
+        let figure = directory.appendingPathComponent("images/figure.pdf")
+        try Data("%PDF-1.4\n".utf8).write(to: figure)
+        let figureAsset = try DocumentAsset.resolve(request("images/figure.pdf"), documentURL: document)
+        precondition(figureAsset.mime == "application/pdf" && figureAsset.url == figure.resolvingSymlinksInPath())
+        count += 1; print("PASS: PDF figures resolve with the PDF MIME type")
         try acceptOutside("%2e%2e%2foutside.svg".removingPercentEncoding!, "percent-decoded parent path resolves")
         try denyURL(URL(string: "margin-asset://document/?path=images/a.svg&path=secret.txt")!, "ambiguous duplicate path rejected")
         try denyURL(URL(string: "margin-asset://document/?path=inside.svg&x=1")!, "unknown query items rejected")

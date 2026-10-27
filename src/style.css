@@ -58,6 +58,9 @@ body.command-down .prose a { cursor:pointer; }
 .md-strong { font-weight:700; }
 .md-emphasis { font-style:italic; }
 .md-strike { text-decoration:line-through; }
+/* Translucent, so a selection still shows through highlighted text. */
+.md-highlight, .table-widget mark { background:rgb(255 196 0 / .38); color:inherit; border-radius:2px; }
+@media (prefers-color-scheme:dark) { .md-highlight, .table-widget mark { background:rgb(255 196 0 / .3); } }
 .md-link { color:#007aff; }
 .md-link-rendered { text-decoration:underline; cursor:pointer; }
 .md-marker,.md-url { color:var(--muted); }

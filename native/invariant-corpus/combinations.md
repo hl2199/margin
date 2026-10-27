@@ -51,3 +51,9 @@ $$$$
 $$ $$
 
 The decay takes about $\tau = 1 / |\text{Re} \lambda|$, where ($x$) and [$y$] and $z$.
+
+Highlights: ==marked text==, ==**bold** inside==, a ==highlight with $x^2$== and ~~a ==nested== strike~~. Equality a == b stays plain.
+
+| Key | Note |
+| --- | --- |
+| one | ==cell highlight== |

@@ -18,7 +18,7 @@
       const copy = line.cloneNode(true);
       copy.querySelectorAll('.md-code, .md-math-source, .md-marker, .md-url, .katex').forEach(element => element.remove());
       const text = copy.textContent;
-      if (/\*\*|~~|\]\(|^#{1,6} |^> ?|\$(?![\d\s$])[^$\n]*?[^\s$]\$(?!\d)/.test(text)) problems.push(text);
+      if (/\*\*|~~|==[^\s=][^=\n]*[^\s=]==|\]\(|^#{1,6} |^> ?|\$(?![\d\s$])[^$\n]*?[^\s$]\$(?!\d)/.test(text)) problems.push(text);
     }
     return problems;
   }

@@ -84,6 +84,24 @@ const BlockMath = {
   }]
 };
 
+/** `==highlighted==` text, with the same flanking rules as GFM's `~~` strikethrough. */
+const punctuation = /[\p{P}\p{S}]/u;
+const HighlightDelim = { resolve: 'Highlight', mark: 'HighlightMark' };
+const Highlight = {
+  defineNodes: ['Highlight', 'HighlightMark'],
+  parseInline: [{
+    name: 'Highlight',
+    parse(cx, next, pos) {
+      if (next !== 61 || cx.char(pos + 1) !== 61 || cx.char(pos + 2) === 61 || cx.char(pos - 1) === 61) return -1;
+      const before = cx.slice(pos - 1, pos), after = cx.slice(pos + 2, pos + 3);
+      const sBefore = /\s|^$/.test(before), sAfter = /\s|^$/.test(after);
+      const pBefore = punctuation.test(before), pAfter = punctuation.test(after);
+      return cx.addDelimiter(HighlightDelim, pos, pos + 2, !sAfter && (!pAfter || sBefore || pBefore), !sBefore && (!pBefore || sAfter || pAfter));
+    },
+    after: 'Emphasis'
+  }]
+};
+
 /** YAML (`---`) or TOML (`+++`) frontmatter at the very start of a document. */
 const Frontmatter = {
   defineNodes: [{ name: 'Frontmatter', block: true }],
@@ -104,4 +122,4 @@ const Frontmatter = {
   }]
 };
 
-export const markdownExtensions = [GFM, TableEnd, InlineMath, BlockMath, Frontmatter];
+export const markdownExtensions = [GFM, TableEnd, InlineMath, BlockMath, Highlight, Frontmatter];

@@ -37,6 +37,32 @@ export function inlineExtensions(md) {
     state.pos = end + 1;
     return true;
   });
+  // Image alt text drops escaped characters (markdown-it keeps them as
+  // text_special tokens, which renderInlineAsText skips); keep them, so
+  // `![caption\\|300](…)` in a table cell still carries its size suffix.
+  const asText = md.renderer.renderInlineAsText.bind(md.renderer);
+  md.renderer.renderInlineAsText = (tokens, options, env) =>
+    asText(tokens.map(token => token.type === 'text_special' ? Object.assign(Object.create(Object.getPrototypeOf(token)), token, { type: 'text' }) : token), options, env);
+
+  // `==highlight==`, as in the editor.
+  md.inline.ruler.before('emphasis', 'highlight', (state, silent) => {
+    const start = state.pos, src = state.src;
+    if (src[start] !== '=' || src[start + 1] !== '=' || src[start + 2] === '=' || src[start - 1] === '=') return false;
+    const end = src.indexOf('==', start + 2);
+    if (end < 0 || end + 2 > state.posMax) return false;
+    const inner = src.slice(start + 2, end);
+    if (!inner.trim() || /^\s|\s$/.test(inner)) return false;
+    if (!silent) {
+      const max = state.posMax;
+      state.push('mark_open', 'mark', 1);
+      state.pos = start + 2; state.posMax = end;
+      state.md.inline.tokenize(state);
+      state.push('mark_close', 'mark', -1);
+      state.posMax = max;
+    }
+    state.pos = end + 2;
+    return true;
+  });
   md.renderer.rules.math_inline = (tokens, index) => katex.renderToString(tokens[index].content, { throwOnError: false, trust: false, strict: 'ignore', output: 'html' });
   return md;
 }

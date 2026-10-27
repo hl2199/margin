@@ -294,6 +294,19 @@ final class BridgeRunner: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         _ = await evaluate("window.margin.loadDocument(\(json(["text": bulletDoc, "name": "bullets.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
         check("nested bullets cycle through • ◦ ▪ by depth", await evaluate("[...document.querySelectorAll('.md-bullet')].map(b => b.textContent).join('')") as? String == "•◦▪•◦•")
         check("bullets keep their Markdown source", await evaluate("window.margin.getText()") as? String == bulletDoc)
+        let sized = "![Caption|120](a.png) and ![Both|90x40](b.png)\n\n| Figure |\n| --- |\n| ![Cell\\|80](c.png) |\n\nEnd."
+        _ = await evaluate("window.margin.loadDocument(\(json(["text": sized, "name": "sized.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
+        let sizes = await evaluate("[...document.querySelectorAll('.md-image img, .table-widget img')].map(i => i.alt + ':' + i.style.width + ':' + i.style.height + ':' + i.style.maxHeight).join('|')") as? String
+        check("Obsidian size suffixes set image widths, keep proportions and leave the caption", sizes == "Caption:120px:auto:|Both:90px:auto:40px|Cell:80px:auto:", detail: sizes ?? "nil")
+        _ = await evaluate("(() => { const canvas = Object.assign(document.createElement('canvas'), { width: 20, height: 10 }); canvas.getContext('2d').fillRect(0, 0, 20, 10); const url = canvas.toDataURL(); window.margin.loadDocument({ text: '| A | B |\\n| --- | --- |\\n| ![wide\\\\|2000x1000](' + url + ') | ![wide\\\\|2000x1000](' + url + ') |\\n\\nEnd.', name: 'wide.md', dirty: false }); window.margin.setSelection(window.margin.getText().length); })()")
+        var ratios: [Double]?
+        for _ in 0..<40 {
+            ratios = await evaluate("[...document.querySelectorAll('.table-widget img')].filter(i => i.complete && i.naturalWidth).map(i => { const r = i.getBoundingClientRect(); return Math.round(r.width / r.height * 100) / 100; })") as? [Double]
+            if ratios?.count == 2 { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        check("sized figures in a table keep their proportions when the page is narrower", ratios?.count == 2 && ratios!.allSatisfy { abs($0 - 2) < 0.1 }, detail: ratios.map { "\($0)" } ?? "nil")
+        _ = await evaluate("window.margin.loadDocument(\(json(["text": bulletDoc, "name": "bullets.md", "dirty": false]))); window.margin.setSelection(window.margin.getText().length)")
         check("each nesting level is indented at least a character width further", await evaluate("(() => { const x = [...document.querySelectorAll('.md-bullet')].slice(0, 4).map(b => b.getBoundingClientRect().left), em = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); return x.every((v, i) => !i || v - x[i - 1] >= em); })()") as? Bool == true)
         _ = await evaluate("window.margin.setPanels({outline: true, wordCount: false, outlineWidth: 0})")
         let drag = { (x: Int) in "(() => { const handle = document.querySelector('#outline-resizer'), at = { bubbles: true, button: 0, buttons: 1, clientY: 100 }; handle.dispatchEvent(new MouseEvent('mousedown', { ...at, clientX: 220 })); document.dispatchEvent(new MouseEvent('mousemove', { ...at, clientX: \(x) })); document.dispatchEvent(new MouseEvent('mouseup', { ...at, clientX: \(x), buttons: 0 })); return [Math.round(document.querySelector('#outline').getBoundingClientRect().width), Math.round(document.querySelector('#editor').getBoundingClientRect().left)]; })()" }

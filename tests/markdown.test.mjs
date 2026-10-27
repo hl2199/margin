@@ -32,6 +32,13 @@ test('display math needs content between its delimiters', () => {
 test('an unclosed display math opener does not swallow the document', () => {
   assert.deepEqual(nodes('$$\nunclosed\n\nParagraph $b$.', ['BlockMath', 'InlineMath']), [['InlineMath', '$b$']]);
 });
+test('==highlight== follows the strikethrough flanking rules', () => {
+  assert.deepEqual(nodes('a ==marked **bold**== b', ['Highlight', 'StrongEmphasis']), [['Highlight', '==marked **bold**=='], ['StrongEmphasis', '**bold**']]);
+  for (const text of ['a == b == c', 'x === y ===', 'a ==b', '`==code==`'])
+    assert.deepEqual(nodes(text, ['Highlight']), [], JSON.stringify(text));
+  assert.match(md.renderInline('==hi== and ==**b**=='), /<mark>hi<\/mark> and <mark><strong>b<\/strong><\/mark>/);
+  assert.doesNotMatch(md.renderInline('a == b == c'), /<mark>/);
+});
 test('frontmatter is recognised only at the start of the document', () => {
   assert.deepEqual(nodes('---\ntitle: x\n---\n# Head', ['Frontmatter', 'ATXHeading1', 'HorizontalRule']), [['Frontmatter', '---\ntitle: x\n---'], ['ATXHeading1', '# Head']]);
   assert.deepEqual(nodes('Text\n\n---\n\nMore', ['Frontmatter', 'HorizontalRule']), [['HorizontalRule', '---']]);
@@ -57,6 +64,10 @@ test('table cells render inline Markdown, math and HTML images but never raw HTM
   assert.doesNotMatch(md.renderInline('<iframe src="x"></iframe><script>alert(1)</script>'), /<iframe|<script>/);
   assert.doesNotMatch(md.renderInline('[x](javascript:alert(1))'), /href="javascript:/);
   assert.match(md.renderInline('Alpha<br><br />Beta'), /Alpha<br><br \/>Beta/);
+});
+test('escaped characters stay in table-cell image captions', () => {
+  assert.match(md.renderInline('![Cell\\|80](c.png)'), /alt="Cell\|80"/);
+  assert.match(md.renderInline('![a \\*b\\*](c.png)'), /alt="a \*b\*"/);
 });
 test('the HTML image table fixture parses as one table with four image cells', () => {
   const source = readFileSync('src/fixtures/html-table-images.md', 'utf8');

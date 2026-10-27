@@ -109,9 +109,23 @@ let imageVersion = 0;
 export const bumpImageVersion = () => ++imageVersion;
 // Local images (relative, `../`, absolute or file: paths) load through the
 // native asset scheme. Web images stay blocked.
+// Obsidian's size suffix on an image's alt text: `![caption|300](…)` shows it
+// 300 px wide, and `|300x200` fits it within 300 × 200. The image always keeps
+// its proportions, so it scales down cleanly when a narrow page or table column
+// cannot give it the full width. The suffix is dropped from the caption.
+export function sizeImage(img) {
+  const match = (img.getAttribute('alt') || '').match(/^(.*?)\s*\\?\|\s*(\d+)(?:\s*x\s*(\d+))?\s*$/);
+  if (!match) return;
+  img.setAttribute('alt', match[1]);
+  img.style.width = `${match[2]}px`;
+  img.style.height = 'auto';
+  if (match[3]) { img.style.maxHeight = `${match[3]}px`; img.style.objectFit = 'contain'; }
+}
 export function rewriteImages(element) {
-  if (!window.webkit?.messageHandlers?.margin) return;
+  const native = !!window.webkit?.messageHandlers?.margin;
   for (const img of element.querySelectorAll('img')) {
+    sizeImage(img);
+    if (!native) continue;
     const source = img.getAttribute('src') || '';
     const file = /^file:\/\//i.test(source);
     if (source && (file || !/^(?:[a-z][\w+.-]*:|\/\/)/i.test(source))) {
@@ -265,6 +279,7 @@ class TableWidget extends WidgetType {
       if (event.metaKey && event.target.closest('a')) { event.preventDefault(); window.margin?.openLink(event.target.closest('a').getAttribute('href')); return; }
       event.preventDefault();
       startEditing(wrap, Number(cell.dataset.row), Number(cell.dataset.column), { x: event.clientX, y: event.clientY, detail: event.detail });
+      if (event.detail === 1 && document.activeElement?.closest?.('th, td')) dragSelectInCell(document.activeElement.closest('th, td'));
     });
     wrap.enterCell = (row, column) => startEditing(wrap, row, column, null);
     // Text typed at a position inside the table's source goes into that cell.
@@ -358,6 +373,31 @@ function selectInCell(cell, point) {
   else placeCaretAtEnd(cell);
   if (point?.detail === 2) { selection.modify('move', 'backward', 'word'); selection.modify('extend', 'forward', 'word'); }
   else if (point?.detail >= 3) selection.selectAllChildren(cell);
+}
+// The press that opens a cell for editing is not the browser's own (the cell was
+// not editable yet), so it cannot drag-select. Follow that drag here instead,
+// extending the selection to the pointer within the cell; past its top or bottom
+// edge the selection runs to the cell's start or end.
+function dragSelectInCell(cell) {
+  const selection = getSelection();
+  if (!selection.rangeCount) return;
+  const anchor = { node: selection.anchorNode, offset: selection.anchorOffset };
+  const edge = atEnd => { const range = document.createRange(); range.selectNodeContents(cell); range.collapse(!atEnd); return range; };
+  const move = event => {
+    if (!(event.buttons & 1)) { up(); return; }
+    const box = cell.getBoundingClientRect();
+    const caret = event.clientY < box.top ? edge(false) : event.clientY > box.bottom ? edge(true)
+      : document.caretRangeFromPoint(Math.min(Math.max(event.clientX, box.left + 1), box.right - 1), event.clientY);
+    if (!caret || !cell.contains(caret.startContainer) && caret.startContainer !== cell) return;
+    event.preventDefault();
+    selection.setBaseAndExtent(anchor.node, anchor.offset, caret.startContainer, caret.startOffset);
+  };
+  const up = () => {
+    document.removeEventListener('mousemove', move, true);
+    document.removeEventListener('mouseup', up, true);
+  };
+  document.addEventListener('mousemove', move, true);
+  document.addEventListener('mouseup', up, true);
 }
 function startEditing(wrap, row, column, point) {
   const rows = rowsOf(wrap);
@@ -573,8 +613,8 @@ class FenceLabel extends WidgetType {
 
 // Inline decorations (view plugin: visible ranges only) --------------------------
 
-const markClasses = { StrongEmphasis: 'md-strong', Emphasis: 'md-emphasis', Strikethrough: 'md-strike' };
-const hiddenMarks = { StrongEmphasis: 'EmphasisMark', Emphasis: 'EmphasisMark', Strikethrough: 'StrikethroughMark', InlineCode: 'CodeMark' };
+const markClasses = { StrongEmphasis: 'md-strong', Emphasis: 'md-emphasis', Strikethrough: 'md-strike', Highlight: 'md-highlight' };
+const hiddenMarks = { StrongEmphasis: 'EmphasisMark', Emphasis: 'EmphasisMark', Strikethrough: 'StrikethroughMark', Highlight: 'HighlightMark', InlineCode: 'CodeMark' };
 const hide = Decoration.replace({});
 const muted = Decoration.mark({ class: 'md-marker' });
 
@@ -699,9 +739,10 @@ function inlineDecorations(view) {
       } else if (name in markClasses || name === 'InlineCode') {
         const marks = node.node.getChildren(hiddenMarks[name]);
         const shown = touches(state, node.from, node.to);
-        if (name === 'InlineCode') {
+        if (name === 'InlineCode' || name === 'Highlight') {
+          // Shading covers the text only, not the marks when they are shown.
           const inner = marks.length >= 2 ? { from: marks[0].to, to: marks.at(-1).from } : node;
-          if (inner.to > inner.from) decorations.push(Decoration.mark({ class: 'md-code' }).range(inner.from, inner.to));
+          if (inner.to > inner.from) decorations.push(Decoration.mark({ class: name === 'Highlight' ? 'md-highlight' : 'md-code' }).range(inner.from, inner.to));
         } else decorations.push(Decoration.mark({ class: markClasses[name] }).range(node.from, node.to));
         for (const mark of marks) shown ? decorations.push(muted.range(mark.from, mark.to)) : replace(mark.from, mark.to, hide);
         if (name === 'InlineCode') return false;

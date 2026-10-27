@@ -6,7 +6,9 @@ enum DocumentAsset {
         "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
         "gif": "image/gif", "webp": "image/webp", "avif": "image/avif",
         "svg": "image/svg+xml", "ico": "image/x-icon", "bmp": "image/bmp",
-        "tif": "image/tiff", "tiff": "image/tiff", "heic": "image/heic", "heif": "image/heif"
+        "tif": "image/tiff", "tiff": "image/tiff", "heic": "image/heic", "heif": "image/heif",
+        // Figures exported from plotting tools; WebKit draws a PDF's first page as an image.
+        "pdf": "application/pdf"
     ]
     static var denied: NSError {
         NSError(domain: NSURLErrorDomain, code: NSURLErrorNoPermissionsToReadFile,

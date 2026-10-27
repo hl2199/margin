@@ -319,6 +319,16 @@ import PDFKit
         check("an image's source, once entered, stays shown with the caret at its end", reveal == [false, false])
         let clicked = await js(view, "(() => { window.margin.setSelection(window.margin.getText().indexOf(')') + 2); const img = document.querySelector('.md-image'); if (!img) return 'not drawn'; const box = img.getBoundingClientRect(), point = { clientX: box.right - 1, clientY: box.top + box.height / 2, bubbles: true, button: 0, buttons: 1 }; document.elementFromPoint(point.clientX, point.clientY).dispatchEvent(new MouseEvent('mousedown', point)); document.dispatchEvent(new MouseEvent('mouseup', { ...point, buttons: 0 })); return document.querySelector('.md-image') ? 'drawn' : 'shown'; })()") as? String
         check("clicking the right edge of a drawn image shows its source", clicked == "shown")
+        let pdfFigure = root.appendingPathComponent("figure.pdf")
+        let drawing = NSView(frame: NSRect(x: 0, y: 0, width: 60, height: 40))
+        try! drawing.dataWithPDF(inside: drawing.bounds).write(to: pdfFigure)
+        view.insertImages(files: [pdfFigure], data: nil, at: nil)
+        check("a PDF figure is linked like an image and renders", await wait {
+            let text = await self.js(view, "window.margin.getText()") as? String ?? ""
+            _ = await self.js(view, "window.margin.setSelection(window.margin.getText().indexOf('## Details')); void 0")
+            let rendered = await self.js(view, "[...document.querySelectorAll('.md-image img')].some(img => img.src.includes('figure.pdf') && img.naturalWidth > 0)") as? Bool
+            return text.contains("![](figure.pdf)") && rendered == true
+        })
         let outside = FileManager.default.temporaryDirectory.appendingPathComponent("margin-drop-\(UUID().uuidString)")
         try! FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
         let figure = outside.appendingPathComponent("My figure (final).png")

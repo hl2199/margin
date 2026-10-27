@@ -245,7 +245,7 @@ const outlineElement = document.querySelector('#outline');
 const wordCountElement = document.querySelector('#word-count');
 let panelTimer;
 // Markup inside a heading that is not part of its readable text.
-const headingMarkup = new Set(['HeaderMark', 'EmphasisMark', 'CodeMark', 'LinkMark', 'URL', 'LinkTitle', 'StrikethroughMark', 'InlineMathMark', 'Escape']);
+const headingMarkup = new Set(['HeaderMark', 'EmphasisMark', 'CodeMark', 'LinkMark', 'URL', 'LinkTitle', 'StrikethroughMark', 'HighlightMark', 'InlineMathMark', 'Escape']);
 function headings() {
   const { state } = view;
   const seen = new Map();

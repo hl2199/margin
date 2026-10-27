@@ -21,7 +21,7 @@
   const click=(word,detail=1,shift=false,selector='.cm-content')=>{const p=point(word,'end',selector); const caret=document.caretRangeFromPoint(p.x,p.y); const root=p.element.closest('pre')?.querySelector('code') || p.element.closest('[data-source-line]'); let before=null; if(caret&&root?.contains(caret.startContainer)){const r=document.createRange();r.selectNodeContents(root);r.setEnd(caret.startContainer,caret.startOffset);before=r.toString();} pointerEvidence={rect:p.rect,text:p.text,at:p.at,word,x:p.x,y:p.y,root:root?.outerHTML,before,caretText:caret?.startContainer.textContent,caretOffset:caret?.startOffset}; mouse(p,'mousedown',detail,shift);mouse(p,'mouseup',detail,shift);};
   function snapshot() {
     const selection=window.getSelection(), parent=selection.focusNode?.parentElement;
-    return {pointerEvidence,source:window.margin.getText(),selected:selection.toString(),focusText:selection.focusNode?.textContent,focusOffset:selection.focusOffset,anchorText:selection.anchorNode?.textContent,anchorOffset:selection.anchorOffset,nativeBackground:parent?getComputedStyle(parent,'::selection').backgroundColor:null,drawnHighlights:document.querySelectorAll('.cm-selectionBackground').length,selectionLayer:!!document.querySelector('.cm-selectionLayer'),opaqueTextBackgrounds:Array.from(document.querySelectorAll('.md-code-line,.md-code')).map(element=>({image:getComputedStyle(element).backgroundImage,color:getComputedStyle(element).backgroundColor})),sourceBackground:parent?getComputedStyle(parent.closest('.cm-line')||parent).backgroundImage:null};
+    return {pointerEvidence,source:window.margin.getText(),selected:selection.toString(),focusText:selection.focusNode?.textContent,focusOffset:selection.focusOffset,anchorText:selection.anchorNode?.textContent,anchorOffset:selection.anchorOffset,nativeBackground:parent?getComputedStyle(parent,'::selection').backgroundColor:null,drawnHighlights:document.querySelectorAll('.cm-selectionBackground').length,selectionLayer:!!document.querySelector('.cm-selectionLayer'),opaqueTextBackgrounds:Array.from(document.querySelectorAll('.md-code-line,.md-code,.md-highlight')).map(element=>({image:getComputedStyle(element).backgroundImage,color:getComputedStyle(element).backgroundColor})),sourceBackground:parent?getComputedStyle(parent.closest('.cm-line')||parent).backgroundImage:null};
   }
   window.selectionRun=async(width,zoom)=>{
     window.selectionResult=null;const results=[];
@@ -37,6 +37,7 @@
       ['bold','alpha **beta** gamma','beta'],
       ['italic','alpha *beta* gamma','beta'],
       ['strike','alpha ~~beta~~ gamma','beta'],
+      ['highlight','alpha ==beta== gamma','beta'],
       ['inline code','alpha `beta` gamma','beta'],
       ['after link','[alpha](https://beta.invalid) beta gamma','beta'],
       ['quote','> alpha beta gamma','beta'],
@@ -66,7 +67,7 @@
       const after=snapshot();
       // Tables stay rendered under a document selection; their source is still what is selected and copied.
       check('Select all preserves '+name+' source',after.source===source&&(name==='table cell'?after.selected.includes('delta'):after.selected.replace(/\r\n/g,'\n')===source.replace(/\r\n/g,'\n')),{source,after});
-      if (['inline code','table cell','code fence','frontmatter','math','diagram'].includes(name)) check('Selection stays visible over '+name+' backgrounds',(after.nativeBackground!=='rgba(0, 0, 0, 0)'&&after.nativeBackground!=='transparent')||(after.selectionLayer&&!after.opaqueTextBackgrounds.some(bg=>bg.image!=='none'||opaque(bg.color))),{source,after});
+      if (['inline code','highlight','table cell','code fence','frontmatter','math','diagram'].includes(name)) check('Selection stays visible over '+name+' backgrounds',(after.nativeBackground!=='rgba(0, 0, 0, 0)'&&after.nativeBackground!=='transparent')||(after.selectionLayer&&!after.opaqueTextBackgrounds.some(bg=>bg.image!=='none'||opaque(bg.color))),{source,after});
     }
     const across='Before words.\n\n| Header | Column |\n| --- | --- |\n| Cell | Value |\n\nAfter words.';
     await setup(across);click('Before');click('After',1,true);await pause();let after=snapshot();
@@ -134,6 +135,19 @@
     const dragged=window.margin.selectionState();
     check('A revealed element keeps its source while a drag from outside selects across it',shownBefore&&shownAtPress&&shownDuring&&sourceShown(),{shownBefore,shownAtPress,shownDuring,after:sourceShown()});
     check('That drag selects from where it started to the pointer',dragged.anchor===revealed.indexOf('After')&&dragged.head===revealed.indexOf('Intro'),{dragged,expected:[revealed.indexOf('After'),revealed.indexOf('Intro')]});
+    // One press on a rendered table cell, dragged, selects within that cell.
+    const dragTable='| Name | Note |\n| --- | --- |\n| one | alpha beta gamma |';
+    await setup(dragTable);
+    start=point('beta','start');mouse(start);await pause();
+    const dragTo=point('gamma','end');
+    document.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,clientX:dragTo.x+1,clientY:dragTo.y,bubbles:true}));await pause();
+    mouse(dragTo,'mouseup');await pause();
+    check('Dragging from a rendered table cell selects text in one press',getSelection().toString()==='beta gamma'&&document.activeElement?.closest('td')?.textContent==='alpha beta gamma',{selected:getSelection().toString()});
+    await setup(dragTable);
+    start=point('beta','start');mouse(start);await pause();
+    document.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,clientX:start.x,clientY:start.y+200,bubbles:true}));await pause();
+    mouse({...start,y:start.y+200},'mouseup');await pause();
+    check('Dragging below a table cell selects to the end of the cell',getSelection().toString()==='beta gamma',{selected:getSelection().toString()});
     window.selectionResult=results;
   };
 })();
