@@ -141,6 +141,7 @@ body.command-down .prose a { cursor:pointer; }
 /* An inline box makes WebKit repaint KaTeX's relatively positioned pieces when
    text before the formula reflows (e.g. a neighbouring formula reveals). */
 .md-math { display:inline-block; white-space:nowrap; }
+.md-math-space { white-space:nowrap; }
 .block-preview { cursor:text; }
 .block-preview > .math-display, .block-preview > .diagram { margin:0; padding:.4em 0; }
 .table-widget { overflow-x:auto; padding:.3em 0; overflow-wrap:normal; word-break:normal; }

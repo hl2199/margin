@@ -148,6 +148,25 @@
     document.dispatchEvent(new MouseEvent('mousemove',{button:0,buttons:1,clientX:start.x,clientY:start.y+200,bubbles:true}));await pause();
     mouse({...start,y:start.y+200},'mouseup');await pause();
     check('Dragging below a table cell selects to the end of the cell',getSelection().toString()==='beta gamma',{selected:getSelection().toString()});
+    // A line never wraps between a formula and the space after it: pre-wrap would
+    // keep that space at the start of the next row, like an indent.
+    const formulas='Arrows are in the direction of influence in the $\\alpha$ plot and the direction of difference in the $\\Psi$ plot, ie. the arrow from limb i to limb j is $\\alpha_{ji}$, but $\\Psi_{ij}$. The locked difference $\\theta^*_i-\\theta^*_j$ (modulo $2\\pi$), comparable with $\\Psi_{ij}$ on the same arrow.';
+    await setup(formulas+'\n\nEnd.');window.margin.setSelection(window.margin.getText().length);await pause();
+    const column=document.querySelector('.cm-content'),indented=[];
+    for(let w=200;w<=800;w+=6){
+      column.style.width=column.style.maxWidth=w+'px';await pause();
+      const row=column.querySelector('.cm-line'),left=row.getBoundingClientRect().left;
+      for(const math of row.querySelectorAll('.md-math')){
+        const walker=document.createTreeWalker(row,NodeFilter.SHOW_TEXT);let next=null,t;
+        while(t=walker.nextNode())if(!math.contains(t)&&(math.compareDocumentPosition(t)&Node.DOCUMENT_POSITION_FOLLOWING)&&t.data.length){next=t;break;}
+        if(!next||!next.data.startsWith(' '))continue;
+        const range=document.createRange();range.setStart(next,0);range.setEnd(next,1);
+        const space=range.getBoundingClientRect();
+        if(space.top>math.getBoundingClientRect().top+4&&space.left-left<3)indented.push({w,math:math.textContent.slice(0,6)});
+      }
+    }
+    column.style.width=column.style.maxWidth='';
+    check('A formula and the space after it wrap together, so no row starts with a space',!indented.length,{indented:indented.slice(0,5),count:indented.length});
     window.selectionResult=results;
   };
 })();

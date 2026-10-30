@@ -818,7 +818,14 @@ function inlineDecorations(view) {
         let after = state.sliceDoc(node.to, line.to).match(/^[,.;:!?)\]}"”’%]+/)?.[0] ?? '';
         while (before && !plain(node.from - before.length)) before = before.slice(1);
         while (after && !plain(node.to + after.length - 1)) after = after.slice(0, -1);
-        if (!touches(state, node.from, node.to)) replace(node.from - before.length, node.to + after.length, Decoration.replace({ widget: new MathWidget(state.sliceDoc(marks[0].to, marks.at(-1).from), before, after) }));
+        if (!touches(state, node.from, node.to)) {
+          const end = node.to + after.length;
+          replace(node.from - before.length, end, Decoration.replace({ widget: new MathWidget(state.sliceDoc(marks[0].to, marks.at(-1).from), before, after) }));
+          // A line may wrap right after the formula's box, carrying the following
+          // space to the start of the next row, where pre-wrap keeps it visible.
+          // Holding the formula and that one space together moves the wrap past it.
+          if (state.sliceDoc(end, end + 1) === ' ' && end + 1 <= line.to) decorations.push(Decoration.mark({ class: 'md-math-space', inclusiveStart: true }).range(node.from - before.length, end + 1));
+        }
         else decorations.push(Decoration.mark({ class: 'md-math-source' }).range(node.from, node.to));
         return false;
       }
